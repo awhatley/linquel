@@ -95,9 +95,9 @@ namespace IQ.Data
         /// <param name="projection"></param>
         /// <param name="provider"></param>
         /// <returns></returns>
-        public virtual Expression BuildExecutionPlan(Expression projection, Expression provider)
+        public virtual Expression BuildExecutionPlan(Expression query, Expression provider)
         {
-            return ExecutionBuilder.Build(this, projection, provider);
+            return ExecutionBuilder.Build(this, query, provider);
         }
     }
 }

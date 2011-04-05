@@ -22,6 +22,7 @@ namespace IQ.Data
         Column,
         Select,
         Projection,
+        Entity,
         Join,
         Aggregate,
         Scalar,
@@ -33,7 +34,13 @@ namespace IQ.Data
         Between,
         RowCount,
         NamedValue,
-        OuterJoined
+        OuterJoined,
+        Insert,
+        Update,
+        Upsert,
+        Delete,
+        Batch,
+        Function
     }
 
     public static class DbExpressionTypeExtensions
@@ -77,12 +84,19 @@ namespace IQ.Data
     /// </summary>
     public class TableExpression : AliasedExpression
     {
+        MappingEntity entity;
         string name;
 
-        public TableExpression(TableAlias alias, string name)
+        public TableExpression(TableAlias alias, MappingEntity entity, string name)
             : base(DbExpressionType.Table, typeof(void), alias)
         {
+            this.entity = entity;
             this.name = name;
+        }
+
+        public MappingEntity Entity
+        {
+            get { return this.entity; }
         }
 
         public string Name
@@ -92,7 +106,30 @@ namespace IQ.Data
 
         public override string ToString()
         {
-            return "T(" + this.name + ")";
+            return "T(" + this.Name + ")";
+        }
+    }
+
+    public class EntityExpression : DbExpression
+    {
+        MappingEntity entity;
+        Expression expression;
+
+        public EntityExpression(MappingEntity entity, Expression expression)
+            : base(DbExpressionType.Entity, expression.Type)
+        {
+            this.entity = entity;
+            this.expression = expression;
+        }
+
+        public MappingEntity Entity
+        {
+            get { return this.entity; }
+        }
+
+        public Expression Expression
+        {
+            get { return this.expression; }
         }
     }
 
@@ -103,12 +140,14 @@ namespace IQ.Data
     {
         TableAlias alias;
         string name;
+        QueryType queryType;
 
-        public ColumnExpression(Type type, TableAlias alias, string name)
+        public ColumnExpression(Type type, QueryType queryType, TableAlias alias, string name)
             : base(DbExpressionType.Column, type)
         {
             this.alias = alias;
             this.name = name;
+            this.queryType = queryType;
         }
 
         public TableAlias Alias
@@ -119,6 +158,11 @@ namespace IQ.Data
         public string Name
         {
             get { return this.name; }
+        }
+
+        public QueryType QueryType
+        {
+            get { return this.queryType; }
         }
 
         public override string ToString()
@@ -163,15 +207,18 @@ namespace IQ.Data
     {
         string name;
         Expression expression;
+
         public ColumnDeclaration(string name, Expression expression)
         {
             this.name = name;
             this.expression = expression;
         }
+
         public string Name
         {
             get { return this.name; }
         }
+
         public Expression Expression
         {
             get { return this.expression; }
@@ -235,24 +282,12 @@ namespace IQ.Data
             Expression take)
             : base(DbExpressionType.Select, typeof(void), alias)
         {
-            this.columns = columns as ReadOnlyCollection<ColumnDeclaration>;
-            if (this.columns == null)
-            {
-                this.columns = new List<ColumnDeclaration>(columns).AsReadOnly();
-            }
+            this.columns = columns.ToReadOnly();
             this.isDistinct = isDistinct;
             this.from = from;
             this.where = where;
-            this.orderBy = orderBy as ReadOnlyCollection<OrderExpression>;
-            if (this.orderBy == null && orderBy != null)
-            {
-                this.orderBy = new List<OrderExpression>(orderBy).AsReadOnly();
-            }
-            this.groupBy = groupBy as ReadOnlyCollection<Expression>;
-            if (this.groupBy == null && groupBy != null)
-            {
-                this.groupBy = new List<Expression>(groupBy).AsReadOnly();
-            }
+            this.orderBy = orderBy.ToReadOnly();
+            this.groupBy = groupBy.ToReadOnly();
             this.take = take;
             this.skip = skip;
         }
@@ -427,11 +462,7 @@ namespace IQ.Data
             : base(DbExpressionType.In, typeof(bool), null)
         {
             this.expression = expression;
-            this.values = values as ReadOnlyCollection<Expression>;
-            if (this.values == null && values != null)
-            {
-                this.values = new List<Expression>(values).AsReadOnly();
-            }
+            this.values = values.ToReadOnly();
         }
         public Expression Expression
         {
@@ -544,11 +575,7 @@ namespace IQ.Data
         public RowNumberExpression(IEnumerable<OrderExpression> orderBy)
             : base(DbExpressionType.RowCount, typeof(int))
         {
-            this.orderBy = orderBy as ReadOnlyCollection<OrderExpression>;
-            if (this.orderBy == null && orderBy != null)
-            {
-                this.orderBy = new List<OrderExpression>(orderBy).AsReadOnly();
-            }
+            this.orderBy = orderBy.ToReadOnly();
         }
         public ReadOnlyCollection<OrderExpression> OrderBy
         {
@@ -559,17 +586,27 @@ namespace IQ.Data
     public class NamedValueExpression : DbExpression
     {
         string name;
+        QueryType queryType;
         Expression value;
-        public NamedValueExpression(string name, Expression value)
+
+        public NamedValueExpression(string name, QueryType queryType, Expression value)
             : base(DbExpressionType.NamedValue, value.Type)
         {
             this.name = name;
+            this.queryType = queryType;
             this.value = value;
         }
+
         public string Name
         {
             get { return this.name; }
         }
+
+        public QueryType QueryType
+        {
+            get { return this.queryType; }
+        }
+
         public Expression Value
         {
             get { return this.value; }
@@ -582,23 +619,23 @@ namespace IQ.Data
     /// </summary>
     public class ProjectionExpression : DbExpression
     {
-        SelectExpression source;
+        SelectExpression select;
         Expression projector;
         LambdaExpression aggregator;
         public ProjectionExpression(SelectExpression source, Expression projector)
             : this(source, projector, null)
         {
         }
-        public ProjectionExpression( SelectExpression source, Expression projector, LambdaExpression aggregator)
+        public ProjectionExpression(SelectExpression source, Expression projector, LambdaExpression aggregator)
             : base(DbExpressionType.Projection, aggregator != null ? aggregator.Body.Type : typeof(IEnumerable<>).MakeGenericType(projector.Type))
         {
-            this.source = source;
+            this.select = source;
             this.projector = projector;
             this.aggregator = aggregator;
         }
-        public SelectExpression Source
+        public SelectExpression Select
         {
-            get { return this.source; }
+            get { return this.select; }
         }
         public Expression Projector
         {
@@ -618,7 +655,7 @@ namespace IQ.Data
         }
         public string QueryText
         {
-            get { return TSqlFormatter.Format(source); }
+            get { return TSqlFormatter.Format(select); }
         }
     }
 
@@ -631,16 +668,8 @@ namespace IQ.Data
         public ClientJoinExpression(ProjectionExpression projection, IEnumerable<Expression> outerKey, IEnumerable<Expression> innerKey)
             : base(DbExpressionType.ClientJoin, projection.Type)
         {
-            this.outerKey = outerKey as ReadOnlyCollection<Expression>;
-            if (this.outerKey == null)
-            {
-                this.outerKey = new List<Expression>(outerKey).AsReadOnly();
-            }
-            this.innerKey = innerKey as ReadOnlyCollection<Expression>;
-            if (this.innerKey == null)
-            {
-                this.innerKey = new List<Expression>(innerKey).AsReadOnly();
-            }
+            this.outerKey = outerKey.ToReadOnly();
+            this.innerKey = innerKey.ToReadOnly();
             this.projection = projection;
         }
 
@@ -660,172 +689,228 @@ namespace IQ.Data
         }
     }
 
-    public static class DbExpressionExtensions
+    public abstract class CommandExpression : DbExpression
     {
-        public static SelectExpression SetColumns(this SelectExpression select, IEnumerable<ColumnDeclaration> columns)
+        protected CommandExpression(DbExpressionType eType, Type type)
+            : base(eType, type)
         {
-            return new SelectExpression(select.Alias, columns.OrderBy(c => c.Name), select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
+        }
+    }
+
+    public abstract class CommandWithResultExpression : CommandExpression
+    {
+        protected CommandWithResultExpression(DbExpressionType eType, Type type)
+            : base(eType, type) 
+        {
         }
 
-        public static SelectExpression AddColumn(this SelectExpression select, ColumnDeclaration column)
+        public abstract Expression Result { get; }
+    }
+
+    public class InsertExpression : CommandWithResultExpression
+    {
+        TableExpression table;
+        ReadOnlyCollection<ColumnAssignment> assignments;
+        Expression result;
+
+        public InsertExpression(TableExpression table, IEnumerable<ColumnAssignment> assignments, Expression result)
+            : base(DbExpressionType.Insert, result != null ? result.Type : typeof(int))
         {
-            List<ColumnDeclaration> columns = new List<ColumnDeclaration>(select.Columns);
-            columns.Add(column);
-            return select.SetColumns(columns);
+            this.table = table;
+            this.assignments = assignments.ToReadOnly();
+            this.result = result;
         }
 
-        public static SelectExpression RemoveColumn(this SelectExpression select, ColumnDeclaration column)
+        public TableExpression Table
         {
-            List<ColumnDeclaration> columns = new List<ColumnDeclaration>(select.Columns);
-            columns.Remove(column);
-            return select.SetColumns(columns);
+            get { return this.table; }
         }
 
-        public static string GetAvailableColumnName(this SelectExpression select, string baseName)
+        public ReadOnlyCollection<ColumnAssignment> Assignments
         {
-            string name = baseName;
-            int n = 0;
-            while (!IsUniqueName(select, name))
-            {
-                name = baseName + (n++);
-            }
-            return name;
+            get { return this.assignments; }
         }
 
-        private static bool IsUniqueName(SelectExpression select, string name)
+        public override Expression Result
         {
-            foreach (var col in select.Columns)
-            {
-                if (col.Name == name)
-                {
-                    return false;
-                }
-            }
-            return true;
+            get { return this.result; }
+        }
+    }
+
+    public class ColumnAssignment
+    {
+        ColumnExpression column;
+        Expression expression;
+
+        public ColumnAssignment(ColumnExpression column, Expression expression)
+        {
+            this.column = column;
+            this.expression = expression;
         }
 
-        public static ProjectionExpression AddOuterJoinTest(this ProjectionExpression proj)
+        public ColumnExpression Column
         {
-            string colName = proj.Source.GetAvailableColumnName("Test");
-            SelectExpression newSource = proj.Source.AddColumn(new ColumnDeclaration(colName, Expression.Constant(1, typeof(int?))));
-            Expression newProjector = 
-                new OuterJoinedExpression(
-                    new ColumnExpression(typeof(int?), newSource.Alias, colName),
-                    proj.Projector
-                    );
-            return new ProjectionExpression(newSource, newProjector, proj.Aggregator);
+            get { return this.column; }
         }
 
-        public static SelectExpression SetDistinct(this SelectExpression select, bool isDistinct)
+        public Expression Expression
         {
-            if (select.IsDistinct != isDistinct)
-            {
-                return new SelectExpression(select.Alias, select.Columns, select.From, select.Where, select.OrderBy, select.GroupBy, isDistinct, select.Skip, select.Take);
-            }
-            return select;
+            get { return this.expression; }
+        }
+    }
+
+    public class UpdateExpression : CommandWithResultExpression
+    {
+        TableExpression table;
+        Expression where;
+        ReadOnlyCollection<ColumnAssignment> assignments;
+        Expression result;
+
+        public UpdateExpression(TableExpression table, Expression where, IEnumerable<ColumnAssignment> assignments, Expression result)
+            : base(DbExpressionType.Update, result != null ? result.Type : typeof(int))
+        {
+            this.table = table;
+            this.where = where;
+            this.assignments = assignments.ToReadOnly();
+            this.result = result;
         }
 
-        public static SelectExpression SetWhere(this SelectExpression select, Expression where)
+        public TableExpression Table
         {
-            if (where != select.Where)
-            {
-                return new SelectExpression(select.Alias, select.Columns, select.From, where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
-            }
-            return select;
+            get { return this.table; }
         }
 
-        public static SelectExpression SetOrderBy(this SelectExpression select, IEnumerable<OrderExpression> orderBy)
+        public Expression Where
         {
-            return new SelectExpression(select.Alias, select.Columns, select.From, select.Where, orderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
+            get { return this.where; }
         }
 
-        public static SelectExpression AddOrderExpression(this SelectExpression select, OrderExpression ordering)
+        public ReadOnlyCollection<ColumnAssignment> Assignments
         {
-            List<OrderExpression> orderby = new List<OrderExpression>();
-            if (select.OrderBy != null)
-                orderby.AddRange(select.OrderBy);
-            orderby.Add(ordering);
-            return select.SetOrderBy(orderby);
+            get { return this.assignments; }
         }
 
-        public static SelectExpression RemoveOrderExpression(this SelectExpression select, OrderExpression ordering)
+        public override Expression Result
         {
-            if (select.OrderBy != null && select.OrderBy.Count > 0)
-            {
-                List<OrderExpression> orderby = new List<OrderExpression>(select.OrderBy);
-                orderby.Remove(ordering);
-                return select.SetOrderBy(orderby);
-            }
-            return select;
+            get { return this.result; }
+        }
+    }
+
+    public class UpsertExpression : CommandWithResultExpression
+    {
+        Expression check;
+        InsertExpression insert;
+        UpdateExpression update;
+
+        public UpsertExpression(Expression check, InsertExpression insert, UpdateExpression update)
+            : base(DbExpressionType.Upsert, insert.Result != null ? insert.Result.Type : typeof(int))
+        {
+            this.check = check;
+            this.insert = insert;
+            this.update = update;
         }
 
-        public static SelectExpression SetGroupBy(this SelectExpression select, IEnumerable<Expression> groupBy)
+        public Expression Check
         {
-            return new SelectExpression(select.Alias, select.Columns, select.From, select.Where, select.OrderBy, groupBy, select.IsDistinct, select.Skip, select.Take);
+            get { return this.check; }
         }
 
-        public static SelectExpression AddGroupExpression(this SelectExpression select, Expression expression)
+        public InsertExpression Insert
         {
-            List<Expression> groupby = new List<Expression>();
-            if (select.GroupBy != null)
-                groupby.AddRange(select.GroupBy);
-            groupby.Add(expression);
-            return select.SetGroupBy(groupby);
+            get { return this.insert; }
         }
 
-        public static SelectExpression RemoveGroupExpression(this SelectExpression select, Expression expression)
+        public UpdateExpression Update
         {
-            if (select.GroupBy != null && select.GroupBy.Count > 0)
-            {
-                List<Expression> groupby = new List<Expression>(select.GroupBy);
-                groupby.Remove(expression);
-                return select.SetGroupBy(groupby);
-            }
-            return select;
+            get { return this.update; }
         }
 
-        public static SelectExpression SetSkip(this SelectExpression select, Expression skip)
+        public override Expression Result
         {
-            if (skip != select.Skip)
-            {
-                return new SelectExpression(select.Alias, select.Columns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, skip, select.Take);
-            }
-            return select;
+            get { return this.insert.Result != null ? this.insert.Result : this.update.Result; }
+        }
+    }
+
+    public class DeleteExpression : CommandExpression
+    {
+        TableExpression table;
+        Expression where;
+
+        public DeleteExpression(TableExpression table, Expression where)
+            : base(DbExpressionType.Delete, typeof(int))
+        {
+            this.table = table;
+            this.where = where;
         }
 
-        public static SelectExpression SetTake(this SelectExpression select, Expression take)
+        public TableExpression Table
         {
-            if (take != select.Take)
-            {
-                return new SelectExpression(select.Alias, select.Columns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, take);
-            }
-            return select;
+            get { return this.table; }
         }
 
-        public static SelectExpression AddRedundantSelect(this SelectExpression select, TableAlias newAlias)
+        public Expression Where
         {
-            var newColumns = select.Columns.Select(d => new ColumnDeclaration(d.Name, new ColumnExpression(d.Expression.Type, newAlias, d.Name)));
-            var newFrom = new SelectExpression(newAlias, select.Columns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
-            return new SelectExpression(select.Alias, newColumns, newFrom, null, null, null, false, null, null);
+            get { return this.where; }
+        }
+    }
+
+    public class BatchExpression : CommandExpression
+    {
+        Expression input;
+        LambdaExpression operation;
+        Expression batchSize;
+        Expression stream;
+
+        public BatchExpression(Expression input, LambdaExpression operation, Expression batchSize, Expression stream)
+            : base(DbExpressionType.Batch, typeof(IEnumerable<>).MakeGenericType(operation.Body.Type))
+        {
+            this.input = input;
+            this.operation = operation;
+            this.batchSize = batchSize;
+            this.stream = stream;
         }
 
-        public static SelectExpression RemoveRedundantFrom(this SelectExpression select)
+        public Expression Input
         {
-            SelectExpression fromSelect = select.From as SelectExpression;
-            if (fromSelect != null)
-            {
-                return SubqueryRemover.Remove(select, fromSelect);
-            }
-            return select;
+            get { return this.input; }
         }
 
-        public static SelectExpression SetFrom(this SelectExpression select, Expression from)
+        public LambdaExpression Operation
         {
-            if (select.From != from)
-            {
-                return new SelectExpression(select.Alias, select.Columns, from, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
-            }
-            return select;
+            get { return this.operation; }
+        }
+
+        public Expression BatchSize
+        {
+            get { return this.batchSize; }
+        }
+
+        public Expression Stream
+        {
+            get { return this.stream; }
+        }
+    }
+
+    public class FunctionExpression : DbExpression
+    {
+        string name;
+        ReadOnlyCollection<Expression> arguments;
+
+        public FunctionExpression(Type type, string name, IEnumerable<Expression> arguments)
+            : base(DbExpressionType.Function, type)
+        {
+            this.name = name;
+            this.arguments = arguments.ToReadOnly();
+        }
+
+        public string Name
+        {
+            get { return this.name; }
+        }
+
+        public ReadOnlyCollection<Expression> Arguments
+        {
+            get { return this.arguments; }
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
@@ -24,10 +25,11 @@ namespace Test
             using (SqlConnection con = new SqlConnection(constr))
             {
                 con.Open();
+                Northwind db = new Northwind(new SqlQueryProvider(con, Northwind.StandardPolicy, Console.Out));
 
-                Northwind db = new Northwind(con, Console.Out);
                 NorthwindTranslationTests.Run(db, true);
                 NorthwindExecutionTests.Run(db);
+                NorthwindCUDTests.Run(db);
 
                 Console.ReadLine();
             }

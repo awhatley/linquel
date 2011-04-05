@@ -79,7 +79,7 @@ namespace IQ.Data
             TableAlias mapped;
             if (this.map.TryGetValue(column.Alias, out mapped))
             {
-                return new ColumnExpression(column.Type, mapped, column.Name);
+                return new ColumnExpression(column.Type, column.QueryType, mapped, column.Name);
             }
             return column;
         }

@@ -199,7 +199,7 @@ namespace IQ.Data
                             (column != null && declColumn != null && column.Alias == declColumn.Alias && column.Name == declColumn.Name))
                         {
                             // found it, so make a reference to this column
-                            expr = new ColumnExpression(column.Type, alias, decl.Name);
+                            expr = new ColumnExpression(column.Type, column.QueryType, alias, decl.Name);
                             break;
                         }
                         iOrdinal++;
@@ -214,7 +214,7 @@ namespace IQ.Data
                         }
                         string colName = column != null ? column.Name : "c" + iOrdinal;
                         newColumns.Add(new ColumnDeclaration(colName, ordering.Expression));
-                        expr = new ColumnExpression(expr.Type, alias, colName);
+                        expr = new ColumnExpression(expr.Type, null, alias, colName);
                     }
                     newOrderings.Add(new OrderExpression(ordering.OrderType, expr));
                 }

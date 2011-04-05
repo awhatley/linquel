@@ -49,9 +49,9 @@ namespace IQ.Data
             if (isTopLevel)
             {
                 isTopLevel = false;
-                this.currentSelect = proj.Source;
+                this.currentSelect = proj.Select;
                 Expression projector = this.Visit(proj.Projector);
-                if (projector != proj.Projector || this.currentSelect != proj.Source)
+                if (projector != proj.Projector || this.currentSelect != proj.Select)
                 {
                     return new ProjectionExpression(this.currentSelect, projector, proj.Aggregator);
                 }
@@ -64,14 +64,14 @@ namespace IQ.Data
                 this.currentSelect = this.currentSelect.AddRedundantSelect(newAlias);
 
                 // remap any references to the outer select to the new alias;
-                SelectExpression source =(SelectExpression)ColumnMapper.Map(proj.Source, newAlias, this.currentSelect.Alias);
+                SelectExpression source =(SelectExpression)ColumnMapper.Map(proj.Select, newAlias, this.currentSelect.Alias);
 
                 // add outer-join test
                 ProjectionExpression pex = new ProjectionExpression(source, proj.Projector).AddOuterJoinTest();
 
-                var pc = ColumnProjector.ProjectColumns(this.language.CanBeColumn, pex.Projector, this.currentSelect.Columns, this.currentSelect.Alias, newAlias, proj.Source.Alias);
+                var pc = ColumnProjector.ProjectColumns(this.language.CanBeColumn, pex.Projector, this.currentSelect.Columns, this.currentSelect.Alias, newAlias, proj.Select.Alias);
 
-                JoinExpression join = new JoinExpression(JoinType.OuterApply, this.currentSelect.From, pex.Source, null);
+                JoinExpression join = new JoinExpression(JoinType.OuterApply, this.currentSelect.From, pex.Select, null);
 
                 this.currentSelect = new SelectExpression(this.currentSelect.Alias, pc.Columns, join, null);
                 return this.Visit(pc.Projector);
@@ -98,6 +98,12 @@ namespace IQ.Data
         protected override Expression VisitSubquery(SubqueryExpression subquery)
         {
             return subquery;
+        }
+
+        protected override Expression VisitCommand(CommandExpression command)
+        {
+            this.isTopLevel = true;
+            return base.VisitCommand(command);
         }
     }
 }

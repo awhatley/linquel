@@ -34,7 +34,7 @@ namespace IQ.Data
         protected override Expression VisitProjection(ProjectionExpression proj)
         {
             SelectExpression save = this.currentSelect;
-            this.currentSelect = proj.Source;
+            this.currentSelect = proj.Select;
             try
             {
                 if (!this.isTopLevel)
@@ -45,10 +45,10 @@ namespace IQ.Data
                         SelectExpression newOuterSelect = (SelectExpression)QueryDuplicator.Duplicate(save);
 
                         // remap any references to the outer select to the new alias;
-                        SelectExpression newInnerSelect = (SelectExpression)ColumnMapper.Map(proj.Source, newOuterSelect.Alias, save.Alias);
+                        SelectExpression newInnerSelect = (SelectExpression)ColumnMapper.Map(proj.Select, newOuterSelect.Alias, save.Alias);
                         // add outer-join test
                         ProjectionExpression newInnerProjection = new ProjectionExpression(newInnerSelect, proj.Projector).AddOuterJoinTest();
-                        newInnerSelect = newInnerProjection.Source;
+                        newInnerSelect = newInnerProjection.Select;
                         Expression newProjector = newInnerProjection.Projector;
 
                         TableAlias newAlias = new TableAlias();
@@ -134,6 +134,12 @@ namespace IQ.Data
         protected override Expression VisitSubquery(SubqueryExpression subquery)
         {
             return subquery;
+        }
+
+        protected override Expression VisitCommand(CommandExpression command)
+        {
+            this.isTopLevel = true;
+            return base.VisitCommand(command);
         }
     }
 }

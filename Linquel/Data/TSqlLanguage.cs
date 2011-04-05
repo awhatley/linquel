@@ -20,6 +20,12 @@ namespace IQ.Data
     public class TSqlLanguage : QueryLanguage
     {
         SqlCommandBuilder cb = new SqlCommandBuilder();
+        TSqlTypeSystem typeSystem = new TSqlTypeSystem();
+
+        public override QueryTypeSystem TypeSystem
+        {
+            get { return this.typeSystem; }
+        }
 
         public override string Quote(string name)
         {
@@ -45,6 +51,11 @@ namespace IQ.Data
         public override string Format(Expression expression)
         {
             return TSqlFormatter.Format(expression);
+        }
+
+        public override Expression GetGeneratedIdExpression(MemberInfo member)
+        {
+            return new FunctionExpression(TypeHelper.GetMemberType(member), "SCOPE_IDENTITY()", null);
         }
     }
 }

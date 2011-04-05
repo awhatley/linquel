@@ -23,6 +23,11 @@ namespace Test
             new NorthwindExecutionTests().RunTests(db, null, null, true);
         }
 
+        public static void Run(Northwind db, string testName)
+        {
+            new NorthwindExecutionTests().RunTest(db, null, true, testName);
+        }
+
         public void TestCompiledQuery()
         {
             var fn = QueryCompiler.Compile((string id) => db.Customers.Where(c => c.CustomerID == id));

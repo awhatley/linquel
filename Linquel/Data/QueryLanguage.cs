@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -12,11 +13,15 @@ using System.Text;
 
 namespace IQ.Data
 {
+
     /// <summary>
     /// Defines the language rules for the query provider
     /// </summary>
     public abstract class QueryLanguage
     {
+        public abstract QueryTypeSystem TypeSystem { get; }
+        public abstract Expression GetGeneratedIdExpression(MemberInfo member);
+
         public virtual string Quote(string name)
         {
             return name;
@@ -104,7 +109,7 @@ namespace IQ.Data
         /// <returns></returns>
         public virtual Expression Parameterize(Expression expression)
         {
-            return Parameterizer.Parameterize(expression);
+            return Parameterizer.Parameterize(this, expression);
         }
     }
 }

@@ -38,10 +38,10 @@ namespace IQ.Data
 
                 // add layer for WHERE clause that references new rownum column
                 newSelect = newSelect.AddRedundantSelect(new TableAlias());
-                newSelect = newSelect.RemoveColumn(newSelect.Columns[newSelect.Columns.Count - 1]);
+                newSelect = newSelect.RemoveColumn(newSelect.Columns.Single(c => c.Name == "rownum"));
 
                 var newAlias = ((SelectExpression)newSelect.From).Alias;
-                ColumnExpression rnCol = new ColumnExpression(typeof(int), newAlias, "rownum");
+                ColumnExpression rnCol = new ColumnExpression(typeof(int), null, newAlias, "rownum");
                 Expression where;
                 if (select.Take != null)
                 {

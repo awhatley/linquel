@@ -15,14 +15,21 @@ using System.Text;
 namespace IQ
 {
     /// <summary>
-    /// Finds the first sub-expression that accesses a Query<T> object
+    /// Finds the first sub-expression that is of a specified type
     /// </summary>
-    public class RootQueryableFinder : ExpressionVisitor
+    public class TypedSubtreeFinder : ExpressionVisitor
     {
         Expression root;
-        public static Expression Find(Expression expression)
+        Type type;
+
+        private TypedSubtreeFinder(Type type)
         {
-            RootQueryableFinder finder = new RootQueryableFinder();
+            this.type = type;
+        }
+
+        public static Expression Find(Expression expression, Type type)
+        {
+            TypedSubtreeFinder finder = new TypedSubtreeFinder(type);
             finder.Visit(expression);
             return finder.root;
         }
@@ -32,7 +39,7 @@ namespace IQ
             Expression result = base.Visit(exp);
 
             // remember the first sub-expression that produces an IQueryable
-            if (this.root == null && result != null && typeof(IQueryable).IsAssignableFrom(result.Type))
+            if (this.root == null && result != null && this.type.IsAssignableFrom(result.Type))
             {
                 this.root = result;
             }

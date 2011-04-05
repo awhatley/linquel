@@ -377,7 +377,7 @@ namespace IQ
 
         protected override Expression VisitLambda(LambdaExpression lambda)
         {
-            if (lambda.Parameters.Count > 1)
+            if (lambda.Parameters.Count != 1)
             {
                 this.Write("(");
                 for (int i = 0, n = lambda.Parameters.Count; i < n; i++)

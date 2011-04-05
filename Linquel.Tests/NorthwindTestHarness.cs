@@ -20,5 +20,12 @@ namespace Test
             DbQueryProvider provider = (DbQueryProvider)((IQueryable)db.Customers).Provider;
             base.RunTests(provider, baselineFile, newBaselineFile, executeQueries);
         }
+
+        protected void RunTest(Northwind db, string baselineFile, bool executeQueries, string testName)
+        {
+            this.db = db;
+            DbQueryProvider provider = (DbQueryProvider)((IQueryable)db.Customers).Provider;
+            base.RunTest(provider, baselineFile, executeQueries, testName);
+        }
     }
 }

@@ -100,7 +100,7 @@ namespace IQ.Data
                         if (cex != null && cex.Alias == column.Alias && cex.Name == column.Name)
                         {
                             // refer to the column already in the column list
-                            return new ColumnExpression(column.Type, this.newAlias, existingColumn.Name);
+                            return new ColumnExpression(column.Type, column.QueryType, this.newAlias, existingColumn.Name);
                         }
                     }
                     if (this.existingAliases.Contains(column.Alias)) 
@@ -108,7 +108,7 @@ namespace IQ.Data
                         int ordinal = this.columns.Count;
                         string columnName = this.GetUniqueColumnName(column.Name);
                         this.columns.Add(new ColumnDeclaration(columnName, column));
-                        mapped = new ColumnExpression(column.Type, this.newAlias, columnName);
+                        mapped = new ColumnExpression(column.Type, column.QueryType, this.newAlias, columnName);
                         this.map.Add(column, mapped);
                         this.columnNames.Add(columnName);
                         return mapped;
@@ -120,7 +120,7 @@ namespace IQ.Data
                 {
                     string columnName = this.GetNextColumnName();
                     this.columns.Add(new ColumnDeclaration(columnName, expression));
-                    return new ColumnExpression(expression.Type, this.newAlias, columnName);
+                    return new ColumnExpression(expression.Type, null, this.newAlias, columnName);
                 }
             }
             else

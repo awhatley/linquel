@@ -38,7 +38,7 @@ namespace IQ.Data
                 {
                     string name = "agg" + aggColumns.Count;
                     ColumnDeclaration cd = new ColumnDeclaration(name, ae.AggregateInGroupSelect);
-                    this.map.Add(ae, new ColumnExpression(ae.Type, ae.GroupByAlias, name));
+                    this.map.Add(ae, new ColumnExpression(ae.Type, null, ae.GroupByAlias, name));
                     aggColumns.Add(cd);
                 }
                 return new SelectExpression(select.Alias, aggColumns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);

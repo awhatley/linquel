@@ -9,17 +9,17 @@ using System.Data.Common;
 
 namespace IQ.Data
 {
-    public class QueryCommand<T>
+    public class QueryCommand
     {
         string commandText;
-        ReadOnlyCollection<string> paramNames;
-        Func<DbDataReader, T> projector;
+        ReadOnlyCollection<QueryParameter> parameters;
+        ReadOnlyCollection<ColumnExpression> columns;
 
-        public QueryCommand(string commandText, IEnumerable<string> paramNames, Func<DbDataReader, T> projector)
+        public QueryCommand(string commandText, IEnumerable<QueryParameter> parameters, IEnumerable<ColumnExpression> columns)
         {
             this.commandText = commandText;
-            this.paramNames = new List<string>(paramNames).AsReadOnly();
-            this.projector = projector;
+            this.parameters = parameters.ToReadOnly();
+            this.columns = columns.ToReadOnly();
         }
 
         public string CommandText
@@ -27,14 +27,43 @@ namespace IQ.Data
             get { return this.commandText; }
         }
 
-        public ReadOnlyCollection<string> ParameterNames
+        public ReadOnlyCollection<QueryParameter> Parameters
         {
-            get { return this.paramNames; }
+            get { return this.parameters; }
         }
 
-        public Func<DbDataReader, T> Projector
+        public ReadOnlyCollection<ColumnExpression> Columns
         {
-            get { return this.projector; }
+            get { return this.columns; }
+        }
+    }
+
+    public class QueryParameter
+    {
+        string name;
+        Type type;
+        QueryType queryType;
+
+        public QueryParameter(string name, Type type, QueryType queryType)
+        {
+            this.name = name;
+            this.type = type;
+            this.queryType = queryType;
+        }
+
+        public string Name
+        {
+            get { return this.name; }
+        }
+
+        public Type Type
+        {
+            get { return this.type; }
+        }
+
+        public QueryType QueryType
+        {
+            get { return this.queryType; }
         }
     }
 }

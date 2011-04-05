@@ -64,15 +64,16 @@ namespace IQ.Data
         protected override Expression VisitMemberAccess(MemberExpression m)
         {
             Expression source = this.Visit(m.Expression);
+            EntityExpression ex = source as EntityExpression;
 
-            if (this.mapping.IsRelationship(m.Member))
+            if (ex != null && this.mapping.IsRelationship(ex.Entity, m.Member))
             {
-                ProjectionExpression projection = (ProjectionExpression)this.Visit(this.mapping.GetMemberExpression(source, m.Member));
-                if (this.currentFrom != null && this.mapping.IsSingletonRelationship(m.Member))
+                ProjectionExpression projection = (ProjectionExpression)this.Visit(this.mapping.GetMemberExpression(source, ex.Entity, m.Member));
+                if (this.currentFrom != null && this.mapping.IsSingletonRelationship(ex.Entity, m.Member))
                 {
                     // convert singleton associations directly to OUTER APPLY
                     projection = projection.AddOuterJoinTest();
-                    Expression newFrom = new JoinExpression(JoinType.OuterApply, this.currentFrom, projection.Source, null);
+                    Expression newFrom = new JoinExpression(JoinType.OuterApply, this.currentFrom, projection.Select, null);
                     this.currentFrom = newFrom;
                     return projection.Projector;
                 }

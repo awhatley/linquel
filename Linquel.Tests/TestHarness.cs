@@ -31,17 +31,29 @@ namespace Test
         protected DbQueryProvider provider;
         XmlTextWriter baselineWriter;
         Dictionary<string, string> baselines;
-        bool executeTests;
+        bool executeQueries;
         protected MethodInfo currentMethod;
 
         protected TestHarness()
         {
         }
 
-        protected void RunTests(DbQueryProvider provider, string baselineFile, string newBaselineFile, bool executeTests)
+        protected void RunTest(DbQueryProvider provider, string baselineFile, bool executeQueries, string testName)
+        {
+            this.RunTests(provider, baselineFile, null, executeQueries,
+                new MethodInfo[] { this.GetType().GetMethod(testName) }
+                );
+        }
+
+        protected void RunTests(DbQueryProvider provider, string baselineFile, string newBaselineFile, bool executeQueries)
+        {
+            this.RunTests(provider, baselineFile, newBaselineFile, executeQueries, this.GetType().GetMethods().Where(m => m.Name.StartsWith("Test")).ToArray());
+        }
+
+        protected void RunTests(DbQueryProvider provider, string baselineFile, string newBaselineFile, bool executeQueries, MethodInfo[] tests)
         {
             this.provider = provider;
-            this.executeTests = executeTests;
+            this.executeQueries = executeQueries;
 
             ReadBaselines(baselineFile);
 
@@ -62,9 +74,7 @@ namespace Test
 
             try
             {
-                var tests = this.GetType().GetMethods().Where(m => m.Name.StartsWith("Test"));
-
-                foreach (MethodInfo method in tests)
+                foreach (MethodInfo method in tests.Where(m => m != null))
                 {
                     iTest++;
                     currentMethod = method;
@@ -238,7 +248,7 @@ namespace Test
                     }
                 }
 
-                if (this.executeTests)
+                if (this.executeQueries)
                 {
                     Exception caught = null;
                     try
@@ -335,6 +345,40 @@ namespace Test
                 Console.Write(s1.Substring(start));
             }
             Console.WriteLine();
+        }
+
+        protected void Assert(bool truth, string message)
+        {
+            if (!truth)
+            {
+                throw new TestFailureException(message);
+            }
+        }
+
+        protected void AssertValue(object expected, object actual)
+        {
+            if (!object.Equals(expected, actual))
+            {
+                throw new TestFailureException(string.Format("Assert failure - expected: {0} actual: {1}", expected, actual));
+            }
+        }
+
+        protected void AssertNotValue(object notExpected, object actual)
+        {
+            if (object.Equals(notExpected, actual))
+            {
+                throw new TestFailureException(string.Format("Assert failure - value not expected: {0}", actual));
+            }
+        }
+
+        protected void AssertTrue(bool value)
+        {
+            this.AssertValue(true, value);
+        }
+
+        protected void AssertFalse(bool value)
+        {
+            this.AssertValue(false, value);
         }
     }
 }

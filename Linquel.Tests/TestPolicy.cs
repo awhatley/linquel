@@ -24,4 +24,17 @@ namespace Test
             return this.included.Contains(member.Name);
         }
     }
+
+    class TestMapping : ImplicitMapping
+    {
+        public TestMapping(QueryLanguage language)
+            : base(language)
+        {
+        }
+
+        public override bool IsGenerated(MappingEntity entity, MemberInfo member)
+        {
+            return member.Name == "OrderID" && member.DeclaringType.Name == "Order";
+        }
+    }
 }

@@ -142,12 +142,8 @@ namespace IQ.Data
         {
             // visit mapping in reverse order
             Expression projector = this.Visit(projection.Projector);
-            SelectExpression source = (SelectExpression)this.Visit(projection.Source);
-            if (projector != projection.Projector || source != projection.Source)
-            {
-                return new ProjectionExpression(source, projector, projection.Aggregator);
-            }
-            return projection;
+            SelectExpression select = (SelectExpression)this.Visit(projection.Select);
+            return this.UpdateProjection(projection, select, projector, projection.Aggregator);
         }
 
         protected override Expression VisitClientJoin(ClientJoinExpression join)

@@ -28,7 +28,7 @@ namespace IQ.Data
         {
             TableAlias newAlias = new TableAlias();
             this.map[table.Alias] = newAlias;
-            return new TableExpression(newAlias, table.Name);
+            return new TableExpression(newAlias, table.Entity, table.Name);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -44,7 +44,7 @@ namespace IQ.Data
             TableAlias newAlias;
             if (this.map.TryGetValue(column.Alias, out newAlias))
             {
-                return new ColumnExpression(column.Type, newAlias, column.Name);
+                return new ColumnExpression(column.Type, column.QueryType, newAlias, column.Name);
             }
             return column;
         }

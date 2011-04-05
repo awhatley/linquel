@@ -21,6 +21,7 @@ namespace IQ.Data
         Dictionary<ParameterExpression, Expression> map;
         Dictionary<Expression, GroupByInfo> groupByMap;
         Expression root;
+        IUpdatableTable batchUpd;
 
         private QueryBinder(QueryMapping mapping, Expression root)
         {
@@ -35,13 +36,17 @@ namespace IQ.Data
             return new QueryBinder(mapping, expression).Visit(expression);
         }
 
-        private static Expression StripQuotes(Expression e)
+        private static LambdaExpression GetLambda(Expression e)
         {
             while (e.NodeType == ExpressionType.Quote)
             {
                 e = ((UnaryExpression)e).Operand;
             }
-            return e;
+            if (e.NodeType == ExpressionType.Constant)
+            {
+                return ((ConstantExpression)e).Value as LambdaExpression;
+            }
+            return e as LambdaExpression;
         }
 
         internal TableAlias GetNextAlias()
@@ -61,56 +66,38 @@ namespace IQ.Data
                 switch (m.Method.Name)
                 {
                     case "Where":
-                        return this.BindWhere(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]));
+                        return this.BindWhere(m.Type, m.Arguments[0], GetLambda(m.Arguments[1]));
                     case "Select":
-                        return this.BindSelect(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]));
+                        return this.BindSelect(m.Type, m.Arguments[0], GetLambda(m.Arguments[1]));
                     case "SelectMany":
                         if (m.Arguments.Count == 2)
                         {
-                            return this.BindSelectMany(
-                                m.Type, m.Arguments[0],
-                                (LambdaExpression)StripQuotes(m.Arguments[1]),
-                                null
-                                );
+                            return this.BindSelectMany(m.Type, m.Arguments[0], GetLambda(m.Arguments[1]), null);
                         }
                         else if (m.Arguments.Count == 3)
                         {
-                            return this.BindSelectMany(
-                                m.Type, m.Arguments[0],
-                                (LambdaExpression)StripQuotes(m.Arguments[1]),
-                                (LambdaExpression)StripQuotes(m.Arguments[2])
-                                );
+                            return this.BindSelectMany(m.Type, m.Arguments[0], GetLambda(m.Arguments[1]), GetLambda(m.Arguments[2]));
                         }
                         break;
                     case "Join":
-                        return this.BindJoin(
-                            m.Type, m.Arguments[0], m.Arguments[1],
-                            (LambdaExpression)StripQuotes(m.Arguments[2]),
-                            (LambdaExpression)StripQuotes(m.Arguments[3]),
-                            (LambdaExpression)StripQuotes(m.Arguments[4])
-                            );
+                        return this.BindJoin(m.Type, m.Arguments[0], m.Arguments[1], GetLambda(m.Arguments[2]), GetLambda(m.Arguments[3]), GetLambda(m.Arguments[4]));
                     case "OrderBy":
-                        return this.BindOrderBy(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Ascending);
+                        return this.BindOrderBy(m.Type, m.Arguments[0], GetLambda(m.Arguments[1]), OrderType.Ascending);
                     case "OrderByDescending":
-                        return this.BindOrderBy(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Descending);
+                        return this.BindOrderBy(m.Type, m.Arguments[0], GetLambda(m.Arguments[1]), OrderType.Descending);
                     case "ThenBy":
-                        return this.BindThenBy(m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Ascending);
+                        return this.BindThenBy(m.Arguments[0], GetLambda(m.Arguments[1]), OrderType.Ascending);
                     case "ThenByDescending":
-                        return this.BindThenBy(m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Descending);
+                        return this.BindThenBy(m.Arguments[0], GetLambda(m.Arguments[1]), OrderType.Descending);
                     case "GroupBy":
                         if (m.Arguments.Count == 2)
                         {
-                            return this.BindGroupBy(
-                                m.Arguments[0],
-                                (LambdaExpression)StripQuotes(m.Arguments[1]),
-                                null,
-                                null
-                                );
+                            return this.BindGroupBy(m.Arguments[0], GetLambda(m.Arguments[1]), null, null);
                         }
                         else if (m.Arguments.Count == 3)
                         {
-                            LambdaExpression lambda1 = (LambdaExpression)StripQuotes(m.Arguments[1]);
-                            LambdaExpression lambda2 = (LambdaExpression)StripQuotes(m.Arguments[2]);
+                            LambdaExpression lambda1 = GetLambda(m.Arguments[1]);
+                            LambdaExpression lambda2 = GetLambda(m.Arguments[2]);
                             if (lambda2.Parameters.Count == 1)
                             {
                                 // second lambda is element selector
@@ -124,12 +111,7 @@ namespace IQ.Data
                         }
                         else if (m.Arguments.Count == 4)
                         {
-                            return this.BindGroupBy(
-                                m.Arguments[0],
-                                (LambdaExpression)StripQuotes(m.Arguments[1]),
-                                (LambdaExpression)StripQuotes(m.Arguments[2]),
-                                (LambdaExpression)StripQuotes(m.Arguments[3])
-                                );
+                            return this.BindGroupBy(m.Arguments[0], GetLambda(m.Arguments[1]), GetLambda(m.Arguments[2]), GetLambda(m.Arguments[3]));
                         }
                         break;
                     case "Count":
@@ -143,8 +125,7 @@ namespace IQ.Data
                         }
                         else if (m.Arguments.Count == 2)
                         {
-                            LambdaExpression selector = (LambdaExpression)StripQuotes(m.Arguments[1]);
-                            return this.BindAggregate(m.Arguments[0], m.Method, selector, m == this.root);
+                            return this.BindAggregate(m.Arguments[0], m.Method, GetLambda(m.Arguments[1]), m == this.root);
                         }
                         break;
                     case "Distinct":
@@ -175,8 +156,7 @@ namespace IQ.Data
                         }
                         else if (m.Arguments.Count == 2)
                         {
-                            LambdaExpression predicate = (LambdaExpression)StripQuotes(m.Arguments[1]);
-                            return this.BindFirst(m.Arguments[0], predicate, m.Method.Name, m == this.root);
+                            return this.BindFirst(m.Arguments[0], GetLambda(m.Arguments[1]), m.Method.Name, m == this.root);
                         }
                         break;
                     case "Any":
@@ -186,15 +166,13 @@ namespace IQ.Data
                         }
                         else if (m.Arguments.Count == 2)
                         {
-                            LambdaExpression predicate = (LambdaExpression)StripQuotes(m.Arguments[1]);
-                            return this.BindAnyAll(m.Arguments[0], m.Method, predicate, m == this.root);
+                            return this.BindAnyAll(m.Arguments[0], m.Method, GetLambda(m.Arguments[1]), m == this.root);
                         }
                         break;
                     case "All":
                         if (m.Arguments.Count == 2)
                         {
-                            LambdaExpression predicate = (LambdaExpression)StripQuotes(m.Arguments[1]);
-                            return this.BindAnyAll(m.Arguments[0], m.Method, predicate, m == this.root);
+                            return this.BindAnyAll(m.Arguments[0], m.Method, GetLambda(m.Arguments[1]), m == this.root);
                         }
                         break;
                     case "Contains":
@@ -203,6 +181,54 @@ namespace IQ.Data
                             return this.BindContains(m.Arguments[0], m.Arguments[1], m == this.root);
                         }
                         break;
+                }
+            }
+            else if (typeof(Updatable).IsAssignableFrom(m.Method.DeclaringType)) 
+            {
+                IUpdatableTable upd = this.batchUpd != null
+                    ? this.batchUpd
+                    : (IUpdatableTable)((ConstantExpression)m.Arguments[0]).Value;
+
+                switch (m.Method.Name)
+                {
+                    case "Insert":
+                        return this.BindInsert(
+                            upd,
+                            m.Arguments[1], 
+                            m.Arguments.Count > 2 ? GetLambda(m.Arguments[2]) : null
+                            );
+                    case "Update":
+                        return this.BindUpdate(
+                            upd,
+                            m.Arguments[1], 
+                            m.Arguments.Count > 2 ? GetLambda(m.Arguments[2]) : null, 
+                            m.Arguments.Count > 3 ? GetLambda(m.Arguments[3]) : null
+                            );
+                    case "InsertOrUpdate":
+                        return this.BindInsertOrUpdate(
+                            upd,
+                            m.Arguments[1],
+                            m.Arguments.Count > 2 ? GetLambda(m.Arguments[2]) : null,
+                            m.Arguments.Count > 3 ? GetLambda(m.Arguments[3]) : null
+                            );
+                    case "Delete":
+                        if (m.Arguments.Count == 2 && GetLambda(m.Arguments[1]) != null)
+                        {
+                            return this.BindDelete(upd, null, GetLambda(m.Arguments[1]));
+                        }
+                        return this.BindDelete(
+                            upd,
+                            m.Arguments[1], 
+                            m.Arguments.Count > 2 ? GetLambda(m.Arguments[2]) : null
+                            );
+                    case "Batch":
+                        return this.BindBatch(
+                            upd,
+                            m.Arguments[1],
+                            GetLambda(m.Arguments[2]),
+                            m.Arguments.Count > 3 ? m.Arguments[3] : Expression.Constant(50),
+                            m.Arguments.Count > 4 ? m.Arguments[4] : Expression.Constant(false)
+                            );
                 }
             }
             return base.VisitMethodCall(m);
@@ -236,9 +262,10 @@ namespace IQ.Data
 
         private Expression BindRelationshipProperty(MemberExpression mex)
         {
-            if (this.mapping.IsRelationship(mex.Member))
+            EntityExpression ex = mex.Expression as EntityExpression;
+            if (ex != null && this.mapping.IsRelationship(ex.Entity, mex.Member))
             {
-                return this.mapping.GetMemberExpression(mex.Expression, mex.Member);
+                return this.mapping.GetMemberExpression(mex.Expression, ex.Entity, mex.Member);
             }
             return mex;
         }
@@ -258,7 +285,7 @@ namespace IQ.Data
                     LambdaExpression aggregator = this.mapping.GetAggregator(expectedType, projection.Type);
                     if (aggregator != null)
                     {
-                        return new ProjectionExpression(projection.Source, projection.Projector, aggregator);
+                        return new ProjectionExpression(projection.Select, projection.Projector, aggregator);
                     }
                 }
             }
@@ -272,9 +299,9 @@ namespace IQ.Data
             this.map[predicate.Parameters[0]] = projection.Projector;
             Expression where = this.Visit(predicate.Body);
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, where),
+                new SelectExpression(alias, pc.Columns, projection.Select, where),
                 pc.Projector
                 );
         }
@@ -285,9 +312,9 @@ namespace IQ.Data
             this.map[selector.Parameters[0]] = projection.Projector;
             Expression expression = this.Visit(selector.Body);
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(expression, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(expression, alias, projection.Select.Alias);
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, null),
+                new SelectExpression(alias, pc.Columns, projection.Select, null),
                 pc.Projector
                 );
         }
@@ -310,26 +337,26 @@ namespace IQ.Data
             }
 
             ProjectionExpression collectionProjection = (ProjectionExpression)this.VisitSequence(collection);
-            bool isTable = collectionProjection.Source.From is TableExpression;
+            bool isTable = collectionProjection.Select.From is TableExpression;
             JoinType joinType = isTable ? JoinType.CrossJoin : defaultIfEmpty ? JoinType.OuterApply : JoinType.CrossApply;
             if (joinType == JoinType.OuterApply)
             {
                 collectionProjection = collectionProjection.AddOuterJoinTest();
             }
-            JoinExpression join = new JoinExpression(joinType, projection.Source, collectionProjection.Source, null);
+            JoinExpression join = new JoinExpression(joinType, projection.Select, collectionProjection.Select, null);
 
             var alias = this.GetNextAlias();
             ProjectedColumns pc;
             if (resultSelector == null)
             {
-                pc = this.ProjectColumns(collectionProjection.Projector, alias, projection.Source.Alias, collectionProjection.Source.Alias);
+                pc = this.ProjectColumns(collectionProjection.Projector, alias, projection.Select.Alias, collectionProjection.Select.Alias);
             }
             else
             {
                 this.map[resultSelector.Parameters[0]] = projection.Projector;
                 this.map[resultSelector.Parameters[1]] = collectionProjection.Projector;
                 Expression result = this.Visit(resultSelector.Body);
-                pc = this.ProjectColumns(result, alias, projection.Source.Alias, collectionProjection.Source.Alias);
+                pc = this.ProjectColumns(result, alias, projection.Select.Alias, collectionProjection.Select.Alias);
             }
             return new ProjectionExpression(
                 new SelectExpression(alias, pc.Columns, join, null),
@@ -348,9 +375,9 @@ namespace IQ.Data
             this.map[resultSelector.Parameters[0]] = outerProjection.Projector;
             this.map[resultSelector.Parameters[1]] = innerProjection.Projector;
             Expression resultExpr = this.Visit(resultSelector.Body);
-            JoinExpression join = new JoinExpression(JoinType.InnerJoin, outerProjection.Source, innerProjection.Source, Expression.Equal(outerKeyExpr, innerKeyExpr));
+            JoinExpression join = new JoinExpression(JoinType.InnerJoin, outerProjection.Select, innerProjection.Select, Expression.Equal(outerKeyExpr, innerKeyExpr));
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, outerProjection.Source.Alias, innerProjection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, outerProjection.Select.Alias, innerProjection.Select.Alias);
             return new ProjectionExpression(
                 new SelectExpression(alias, pc.Columns, join, null),
                 pc.Projector
@@ -381,9 +408,9 @@ namespace IQ.Data
             }
 
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, null, orderings.AsReadOnly(), null),
+                new SelectExpression(alias, pc.Columns, projection.Select, null, orderings.AsReadOnly(), null),
                 pc.Projector
                 );
         }
@@ -413,7 +440,7 @@ namespace IQ.Data
             }
 
             // Use ProjectColumns to get group-by expressions from key expression
-            ProjectedColumns keyProjection = this.ProjectColumns(keyExpr, projection.Source.Alias, projection.Source.Alias);
+            ProjectedColumns keyProjection = this.ProjectColumns(keyExpr, projection.Select.Alias, projection.Select.Alias);
             IEnumerable<Expression> groupExprs = keyProjection.Columns.Select(c => c.Expression);
 
             // make duplicate of source query as basis of element subquery by visiting the source again
@@ -424,7 +451,7 @@ namespace IQ.Data
             Expression subqueryKey = this.Visit(keySelector.Body);
 
             // use same projection trick to get group-by expressions based on subquery
-            ProjectedColumns subqueryKeyPC = this.ProjectColumns(subqueryKey, subqueryBasis.Source.Alias, subqueryBasis.Source.Alias);
+            ProjectedColumns subqueryKeyPC = this.ProjectColumns(subqueryKey, subqueryBasis.Select.Alias, subqueryBasis.Select.Alias);
             IEnumerable<Expression> subqueryGroupExprs = subqueryKeyPC.Columns.Select(c => c.Expression);
             Expression subqueryCorrelation = this.BuildPredicateWithNullsEqual(subqueryGroupExprs, groupExprs);
 
@@ -438,10 +465,10 @@ namespace IQ.Data
 
             // build subquery that projects the desired element
             var elementAlias = this.GetNextAlias();
-            ProjectedColumns elementPC = this.ProjectColumns(subqueryElemExpr, elementAlias, subqueryBasis.Source.Alias);
+            ProjectedColumns elementPC = this.ProjectColumns(subqueryElemExpr, elementAlias, subqueryBasis.Select.Alias);
             ProjectionExpression elementSubquery =
                 new ProjectionExpression(
-                    new SelectExpression(elementAlias, elementPC.Columns, subqueryBasis.Source, subqueryCorrelation),
+                    new SelectExpression(elementAlias, elementPC.Columns, subqueryBasis.Select, subqueryCorrelation),
                     elementPC.Projector
                     );
 
@@ -472,14 +499,14 @@ namespace IQ.Data
                         );
             }
 
-            ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, projection.Select.Alias);
 
             // make it possible to tie aggregates back to this group-by
             Expression projectedElementSubquery = ((NewExpression)pc.Projector).Arguments[1];
             this.groupByMap.Add(projectedElementSubquery, info);
 
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, null, null, groupExprs),
+                new SelectExpression(alias, pc.Columns, projection.Select, null, null, groupExprs),
                 pc.Projector
                 );
         }
@@ -575,15 +602,15 @@ namespace IQ.Data
             }
 
             var alias = this.GetNextAlias();
-            var pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            var pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
             Expression aggExpr = new AggregateExpression(returnType, aggType, argExpr, isDistinct);
-            SelectExpression select = new SelectExpression(alias, new ColumnDeclaration[] { new ColumnDeclaration("", aggExpr) }, projection.Source, null);
+            SelectExpression select = new SelectExpression(alias, new ColumnDeclaration[] { new ColumnDeclaration("", aggExpr) }, projection.Select, null);
 
             if (isRoot)
             {
                 ParameterExpression p = Expression.Parameter(typeof(IEnumerable<>).MakeGenericType(aggExpr.Type), "p");
                 LambdaExpression gator = Expression.Lambda(Expression.Call(typeof(Enumerable), "Single", new Type[] { returnType }, p), p);
-                return new ProjectionExpression(select, new ColumnExpression(returnType, alias, ""), gator);
+                return new ProjectionExpression(select, new ColumnExpression(returnType, null, alias, ""), gator);
             }
 
             ScalarExpression subquery = new ScalarExpression(returnType, select);
@@ -621,11 +648,11 @@ namespace IQ.Data
         private Expression BindDistinct(Expression source)
         {
             ProjectionExpression projection = this.VisitSequence(source);
-            SelectExpression select = projection.Source;
+            SelectExpression select = projection.Select;
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, null, null, null, true, null, null),
+                new SelectExpression(alias, pc.Columns, projection.Select, null, null, null, true, null, null),
                 pc.Projector
                 );
         }
@@ -634,11 +661,11 @@ namespace IQ.Data
         {
             ProjectionExpression projection = this.VisitSequence(source);
             take = this.Visit(take);
-            SelectExpression select = projection.Source;
+            SelectExpression select = projection.Select;
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, null, null, null, false, null, take),
+                new SelectExpression(alias, pc.Columns, projection.Select, null, null, null, false, null, take),
                 pc.Projector
                 );
         }
@@ -647,11 +674,11 @@ namespace IQ.Data
         {
             ProjectionExpression projection = this.VisitSequence(source);
             skip = this.Visit(skip);
-            SelectExpression select = projection.Source;
+            SelectExpression select = projection.Select;
             var alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
             return new ProjectionExpression(
-                new SelectExpression(alias, pc.Columns, projection.Source, null, null, null, false, skip, null),
+                new SelectExpression(alias, pc.Columns, projection.Select, null, null, null, false, skip, null),
                 pc.Projector
                 );
         }
@@ -669,9 +696,9 @@ namespace IQ.Data
             if (take != null || where != null)
             {
                 var alias = this.GetNextAlias();
-                ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+                ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Select.Alias);
                 projection = new ProjectionExpression(
-                    new SelectExpression(alias, pc.Columns, projection.Source, where, null, null, false, null, take),
+                    new SelectExpression(alias, pc.Columns, projection.Select, where, null, null, false, null, take),
                     pc.Projector
                     );
             }
@@ -680,7 +707,7 @@ namespace IQ.Data
                 Type elementType = projection.Projector.Type;
                 ParameterExpression p = Expression.Parameter(typeof(IEnumerable<>).MakeGenericType(elementType), "p");
                 LambdaExpression gator = Expression.Lambda(Expression.Call(typeof(Enumerable), kind, new Type[] { elementType }, p), p);
-                return new ProjectionExpression(projection.Source, projection.Projector, gator);
+                return new ProjectionExpression(projection.Select, projection.Projector, gator);
             }
             return projection;
         }
@@ -722,7 +749,7 @@ namespace IQ.Data
                     source = Expression.Call(typeof(Queryable), "Where", method.GetGenericArguments(), source, predicate);
                 }
                 ProjectionExpression projection = this.VisitSequence(source);
-                Expression result = new ExistsExpression(projection.Source);
+                Expression result = new ExistsExpression(projection.Select);
                 if (isAll)
                 {
                     result = Expression.Not(result);
@@ -753,7 +780,7 @@ namespace IQ.Data
             {
                 ProjectionExpression projection = this.VisitSequence(source);
                 match = this.Visit(match);
-                Expression result = new InExpression(match, projection.Source);
+                Expression result = new InExpression(match, projection.Select);
                 if (isRoot)
                 {
                     return this.GetSingletonSequence(result, "SingleOrDefault");
@@ -772,21 +799,67 @@ namespace IQ.Data
             }
             var alias = this.GetNextAlias();
             SelectExpression select = new SelectExpression(alias, new[] { new ColumnDeclaration("value", expr) }, null, null);
-            return new ProjectionExpression(select, new ColumnExpression(expr.Type, alias, "value"), gator);
+            return new ProjectionExpression(select, new ColumnExpression(expr.Type, null, alias, "value"), gator);
+        }
+
+        private Expression BindInsert(IUpdatableTable upd, Expression instance, LambdaExpression selector)
+        {
+            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.TableID);
+            return this.Visit(this.mapping.GetInsertExpression(entity, instance, selector));
+        }
+
+        private Expression BindUpdate(IUpdatableTable upd, Expression instance, LambdaExpression updateCheck, LambdaExpression resultSelector)
+        {
+            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.TableID);
+            return this.Visit(this.mapping.GetUpdateExpression(entity, instance, updateCheck, resultSelector));
+        }
+
+        private Expression BindInsertOrUpdate(IUpdatableTable upd, Expression instance, LambdaExpression updateCheck, LambdaExpression resultSelector)
+        {
+            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.TableID);
+            return this.Visit(this.mapping.GetInsertOrUpdateExpression(entity, instance, updateCheck, resultSelector));
+        }
+
+        private Expression BindDelete(IUpdatableTable upd, Expression instance, LambdaExpression deleteCheck)
+        {
+            MappingEntity entity = this.mapping.GetEntity(instance != null ? instance.Type : deleteCheck.Parameters[0].Type, upd.TableID);
+            return this.Visit(this.mapping.GetDeleteExpression(entity, instance, deleteCheck));
+        }
+
+        private Expression BindBatch(IUpdatableTable upd, Expression instances, LambdaExpression operation, Expression batchSize, Expression stream)
+        {
+            var save = this.batchUpd;
+            this.batchUpd = upd;
+            var op = (LambdaExpression)this.Visit(operation);
+            this.batchUpd = save;
+            var items = this.Visit(instances);
+            var size = this.Visit(batchSize);
+            var str = this.Visit(stream);
+            return new BatchExpression(items, op, size, str);
         }
 
         private bool IsQuery(Expression expression)
         {
-            return
-                expression.Type.IsGenericType
-                && typeof(IQueryable<>).MakeGenericType(expression.Type.GetGenericArguments()).IsAssignableFrom(expression.Type);
-       }
+            Type elementType = TypeHelper.GetElementType(expression.Type);
+            return elementType != null && typeof(IQueryable<>).MakeGenericType(elementType).IsAssignableFrom(expression.Type);
+        }
 
         protected override Expression VisitConstant(ConstantExpression c)
         {
             if (this.IsQuery(c))
             {
-                return this.VisitSequence(this.mapping.GetTableQuery(TypeHelper.GetElementType(c.Type)));
+                IQueryable q = (IQueryable)c.Value;
+                IQueryableTable t = q as IQueryableTable;
+                if (t != null)
+                {
+                    Type rowType = TypeHelper.GetElementType(c.Type);
+                    MappingEntity entity = this.mapping.GetEntity(rowType, t.TableID);
+                    return this.VisitSequence(this.mapping.GetTableQuery(entity));
+                }
+                else
+                {
+                    return RedundantSubqueryRemover.Remove(this.Visit(q.Expression));
+                }
             }
             return c;
         }
@@ -819,10 +892,10 @@ namespace IQ.Data
         {
             if (m.Expression != null && m.Expression.NodeType == ExpressionType.Parameter && this.IsQuery(m))
             {
-                return this.VisitSequence(this.mapping.GetTableQuery(TypeHelper.GetElementType(m.Type)));
+                // note: this only works if there is only one meta entity per type
+                return this.VisitSequence(this.mapping.GetTableQuery(this.mapping.GetEntity(TypeHelper.GetElementType(m.Type))));
             }
             Expression source = this.Visit(m.Expression);
-
             Expression result = BindMember(source, m.Member);
             MemberExpression mex = result as MemberExpression;
             if (mex != null && mex.Member == m.Member && mex.Expression == m.Expression)
@@ -836,13 +909,23 @@ namespace IQ.Data
         {
             switch (source.NodeType)
             {
+                case (ExpressionType)DbExpressionType.Entity:
+                    EntityExpression ex = (EntityExpression)source;
+                    var result = BindMember(ex.Expression, member);
+                    MemberExpression mex = result as MemberExpression;
+                    if (mex != null && mex.Expression == ex.Expression && mex.Member == member)
+                    {
+                        return Expression.MakeMemberAccess(source, member);
+                    }
+                    return result;
+
                 case ExpressionType.MemberInit:
                     MemberInitExpression min = (MemberInitExpression)source;
                     for (int i = 0, n = min.Bindings.Count; i < n; i++)
                     {
                         MemberAssignment assign = min.Bindings[i] as MemberAssignment;
                         if (assign != null && MembersMatch(assign.Member, member))
-                        {
+                        {                            
                             return assign.Expression;
                         }
                     }
@@ -873,7 +956,7 @@ namespace IQ.Data
                     // member access on a projection turns into a new projection w/ member access applied
                     ProjectionExpression proj = (ProjectionExpression)source;
                     Expression newProjector = BindMember(proj.Projector, member);
-                    return new ProjectionExpression(proj.Source, newProjector);
+                    return new ProjectionExpression(proj.Select, newProjector);
 
                 case (ExpressionType)DbExpressionType.OuterJoined:
                     OuterJoinedExpression oj = (OuterJoinedExpression)source;
@@ -890,14 +973,32 @@ namespace IQ.Data
 
                 case ExpressionType.Constant:
                     ConstantExpression con = (ConstantExpression)source;
+                    Type memberType = TypeHelper.GetMemberType(member);
                     if (con.Value == null)
                     {
-                        Type memberType = TypeHelper.GetMemberType(member);
                         return Expression.Constant(GetDefault(memberType), memberType);
                     }
-                    break;
+                    else
+                    {
+                        return Expression.Constant(GetValue(con.Value, member), memberType);
+                    }
             }
             return Expression.MakeMemberAccess(source, member);
+        }
+
+        private static object GetValue(object instance, MemberInfo member)
+        {
+            FieldInfo fi = member as FieldInfo;
+            if (fi != null)
+            {
+                return fi.GetValue(instance);
+            }
+            PropertyInfo pi = member as PropertyInfo;
+            if (pi != null)
+            {
+                return pi.GetValue(instance, null);
+            }
+            return null;
         }
 
         private static object GetDefault(Type type)

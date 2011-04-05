@@ -73,6 +73,20 @@ namespace IQ.Data
                     return this.CompareProjection((ProjectionExpression)a, (ProjectionExpression)b);
                 case DbExpressionType.NamedValue:
                     return this.CompareNamedValue((NamedValueExpression)a, (NamedValueExpression)b);
+                case DbExpressionType.Insert:
+                    return this.CompareInsert((InsertExpression)a, (InsertExpression)b);
+                case DbExpressionType.Update:
+                    return this.CompareUpdate((UpdateExpression)a, (UpdateExpression)b);
+                case DbExpressionType.Upsert:
+                    return this.CompareUpsert((UpsertExpression)a, (UpsertExpression)b);
+                case DbExpressionType.Delete:
+                    return this.CompareDelete((DeleteExpression)a, (DeleteExpression)b);
+                case DbExpressionType.Batch:
+                    return this.CompareBatch((BatchExpression)a, (BatchExpression)b);
+                case DbExpressionType.Function:
+                    return this.CompareFunction((FunctionExpression)a, (FunctionExpression)b);
+                case DbExpressionType.Entity:
+                    return this.CompareEntity((EntityExpression)a, (EntityExpression)b);
                 default:
                     return base.Compare(a, b);
             }
@@ -269,14 +283,14 @@ namespace IQ.Data
 
         protected virtual bool CompareProjection(ProjectionExpression a, ProjectionExpression b)
         {
-            if (!this.Compare(a.Source, b.Source))
+            if (!this.Compare(a.Select, b.Select))
                 return false;
 
             var save = this.aliasScope;
             try
             {
                 this.aliasScope = new ScopedDictionary<TableAlias, TableAlias>(this.aliasScope);
-                this.aliasScope.Add(a.Source.Alias, b.Source.Alias);
+                this.aliasScope.Add(a.Select.Alias, b.Select.Alias);
 
                 return this.Compare(a.Projector, b.Projector)
                     && this.Compare(a.Aggregator, b.Aggregator)
@@ -286,6 +300,57 @@ namespace IQ.Data
             {
                 this.aliasScope = save;
             }
+        }
+
+        protected virtual bool CompareInsert(InsertExpression x, InsertExpression y)
+        {
+            return this.Compare(x.Table, y.Table)
+                && this.CompareColumnAssignments(x.Assignments, y.Assignments);
+        }
+
+        protected virtual bool CompareColumnAssignments(ReadOnlyCollection<ColumnAssignment> x, ReadOnlyCollection<ColumnAssignment> y)
+        {
+            if (x == y)
+                return true;
+            if (x.Count != y.Count)
+                return false;
+            for (int i = 0, n = x.Count; i < n; i++)
+            {
+                if (!this.Compare(x[i].Column, y[i].Column) || !this.Compare(x[i].Expression, y[i].Expression))
+                    return false;
+            }
+            return true;
+        }
+
+        protected virtual bool CompareUpdate(UpdateExpression x, UpdateExpression y)
+        {
+            return this.Compare(x.Table, y.Table) && this.Compare(x.Where, y.Where) && this.CompareColumnAssignments(x.Assignments, y.Assignments);
+        }
+
+        protected virtual bool CompareUpsert(UpsertExpression x, UpsertExpression y)
+        {
+            return this.Compare(x.Check, y.Check) && this.Compare(x.Insert, y.Insert) && this.Compare(x.Update, y.Update);
+        }
+
+        protected virtual bool CompareDelete(DeleteExpression x, DeleteExpression y)
+        {
+            return this.Compare(x.Table, y.Table) && this.Compare(x.Where, y.Where);
+        }
+
+        protected virtual bool CompareBatch(BatchExpression x, BatchExpression y)
+        {
+            return this.Compare(x.Input, y.Input) && this.Compare(x.Operation, y.Operation)
+                && this.Compare(x.BatchSize, y.BatchSize) && this.Compare(x.Stream, y.Stream);
+        }
+
+        protected virtual bool CompareFunction(FunctionExpression x, FunctionExpression y)
+        {
+            return x.Name == y.Name && this.CompareExpressionList(x.Arguments, y.Arguments);
+        }
+
+        protected virtual bool CompareEntity(EntityExpression x, EntityExpression y)
+        {
+            return x.Entity == y.Entity && this.Compare(x.Expression, y.Expression);
         }
     }
 }

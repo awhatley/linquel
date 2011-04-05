@@ -119,9 +119,14 @@ namespace IQ
         protected virtual Expression VisitUnary(UnaryExpression u)
         {
             Expression operand = this.Visit(u.Operand);
-            if (operand != u.Operand)
+            return this.UpdateUnary(u, operand, u.Type, u.Method);
+        }
+
+        protected UnaryExpression UpdateUnary(UnaryExpression u, Expression operand, Type resultType, MethodInfo method)
+        {
+            if (u.Operand != operand || u.Type != resultType || u.Method != method)
             {
-                return Expression.MakeUnary(u.NodeType, operand, u.Type, u.Method);
+                return Expression.MakeUnary(u.NodeType, operand, resultType, method);
             }
             return u;
         }
@@ -131,12 +136,21 @@ namespace IQ
             Expression left = this.Visit(b.Left);
             Expression right = this.Visit(b.Right);
             Expression conversion = this.Visit(b.Conversion);
-            if (left != b.Left || right != b.Right || conversion != b.Conversion)
+            return this.UpdateBinary(b, left, right, conversion, b.IsLiftedToNull, b.Method);
+        }
+
+        protected BinaryExpression UpdateBinary(BinaryExpression b, Expression left, Expression right, Expression conversion, bool isLiftedToNull, MethodInfo method)
+        {
+            if (left != b.Left || right != b.Right || conversion != b.Conversion || method != b.Method || isLiftedToNull != b.IsLiftedToNull)
             {
                 if (b.NodeType == ExpressionType.Coalesce && b.Conversion != null)
+                {
                     return Expression.Coalesce(left, right, conversion as LambdaExpression);
+                }
                 else
-                    return Expression.MakeBinary(b.NodeType, left, right, b.IsLiftedToNull, b.Method);
+                {
+                    return Expression.MakeBinary(b.NodeType, left, right, isLiftedToNull, method);
+                }
             }
             return b;
         }
@@ -144,9 +158,14 @@ namespace IQ
         protected virtual Expression VisitTypeIs(TypeBinaryExpression b)
         {
             Expression expr = this.Visit(b.Expression);
-            if (expr != b.Expression)
+            return this.UpdateTypeIs(b, expr, b.TypeOperand);
+        }
+
+        protected TypeBinaryExpression UpdateTypeIs(TypeBinaryExpression b, Expression expression, Type typeOperand)
+        {
+            if (expression != b.Expression || typeOperand != b.TypeOperand)
             {
-                return Expression.TypeIs(expr, b.TypeOperand);
+                return Expression.TypeIs(expression, typeOperand);
             }
             return b;
         }
@@ -161,6 +180,11 @@ namespace IQ
             Expression test = this.Visit(c.Test);
             Expression ifTrue = this.Visit(c.IfTrue);
             Expression ifFalse = this.Visit(c.IfFalse);
+            return this.UpdateConditional(c, test, ifTrue, ifFalse);
+        }
+
+        protected ConditionalExpression UpdateConditional(ConditionalExpression c, Expression test, Expression ifTrue, Expression ifFalse)
+        {
             if (test != c.Test || ifTrue != c.IfTrue || ifFalse != c.IfFalse)
             {
                 return Expression.Condition(test, ifTrue, ifFalse);
@@ -176,9 +200,14 @@ namespace IQ
         protected virtual Expression VisitMemberAccess(MemberExpression m)
         {
             Expression exp = this.Visit(m.Expression);
-            if (exp != m.Expression)
+            return this.UpdateMemberAccess(m, exp, m.Member);
+        }
+
+        protected MemberExpression UpdateMemberAccess(MemberExpression m, Expression expression, MemberInfo member)
+        {
+            if (expression != m.Expression || member != m.Member)
             {
-                return Expression.MakeMemberAccess(exp, m.Member);
+                return Expression.MakeMemberAccess(expression, member);
             }
             return m;
         }
@@ -187,9 +216,14 @@ namespace IQ
         {
             Expression obj = this.Visit(m.Object);
             IEnumerable<Expression> args = this.VisitExpressionList(m.Arguments);
-            if (obj != m.Object || args != m.Arguments)
+            return this.UpdateMethodCall(m, obj, m.Method, args);
+        }
+
+        protected MethodCallExpression UpdateMethodCall(MethodCallExpression m, Expression obj, MethodInfo method, IEnumerable<Expression> args)
+        {
+            if (obj != m.Object || method != m.Method || args != m.Arguments)
             {
-                return Expression.Call(obj, m.Method, args);
+                return Expression.Call(obj, method, args);
             }
             return m;
         }
@@ -227,9 +261,14 @@ namespace IQ
         protected virtual MemberAssignment VisitMemberAssignment(MemberAssignment assignment)
         {
             Expression e = this.Visit(assignment.Expression);
-            if (e != assignment.Expression)
+            return this.UpdateMemberAssignment(assignment, assignment.Member, e);
+        }
+
+        protected MemberAssignment UpdateMemberAssignment(MemberAssignment assignment, MemberInfo member, Expression expression)
+        {
+            if (expression != assignment.Expression || member != assignment.Member)
             {
-                return Expression.Bind(assignment.Member, e);
+                return Expression.Bind(member, expression);
             }
             return assignment;
         }
@@ -237,9 +276,14 @@ namespace IQ
         protected virtual MemberMemberBinding VisitMemberMemberBinding(MemberMemberBinding binding)
         {
             IEnumerable<MemberBinding> bindings = this.VisitBindingList(binding.Bindings);
-            if (bindings != binding.Bindings)
+            return this.UpdateMemberMemberBinding(binding, binding.Member, bindings);
+        }
+
+        protected MemberMemberBinding UpdateMemberMemberBinding(MemberMemberBinding binding, MemberInfo member, IEnumerable<MemberBinding> bindings)
+        {
+            if (bindings != binding.Bindings || member != binding.Member)
             {
-                return Expression.MemberBind(binding.Member, bindings);
+                return Expression.MemberBind(member, bindings);
             }
             return binding;
         }
@@ -247,9 +291,14 @@ namespace IQ
         protected virtual MemberListBinding VisitMemberListBinding(MemberListBinding binding)
         {
             IEnumerable<ElementInit> initializers = this.VisitElementInitializerList(binding.Initializers);
-            if (initializers != binding.Initializers)
+            return this.UpdateMemberListBinding(binding, binding.Member, initializers);
+        }
+
+        protected MemberListBinding UpdateMemberListBinding(MemberListBinding binding, MemberInfo member, IEnumerable<ElementInit> initializers)
+        {
+            if (initializers != binding.Initializers || member != binding.Member)
             {
-                return Expression.ListBind(binding.Member, initializers);
+                return Expression.ListBind(member, initializers);
             }
             return binding;
         }
@@ -307,9 +356,14 @@ namespace IQ
         protected virtual Expression VisitLambda(LambdaExpression lambda)
         {
             Expression body = this.Visit(lambda.Body);
-            if (body != lambda.Body)
+            return this.UpdateLambda(lambda, lambda.Type, body, lambda.Parameters);
+        }
+
+        protected LambdaExpression UpdateLambda(LambdaExpression lambda, Type delegateType, Expression body, IEnumerable<ParameterExpression> parameters)
+        {
+            if (body != lambda.Body || parameters != lambda.Parameters || delegateType != lambda.Type)
             {
-                return Expression.Lambda(lambda.Type, body, lambda.Parameters);
+                return Expression.Lambda(delegateType, body, parameters);
             }
             return lambda;
         }
@@ -317,12 +371,21 @@ namespace IQ
         protected virtual NewExpression VisitNew(NewExpression nex)
         {
             IEnumerable<Expression> args = this.VisitExpressionList(nex.Arguments);
-            if (args != nex.Arguments)
+            return this.UpdateNew(nex, nex.Constructor, args, nex.Members);
+        }
+
+        protected NewExpression UpdateNew(NewExpression nex, ConstructorInfo constructor, IEnumerable<Expression> args, IEnumerable<MemberInfo> members)
+        {
+            if (args != nex.Arguments || constructor != nex.Constructor || members != nex.Members)
             {
                 if (nex.Members != null)
-                    return Expression.New(nex.Constructor, args, nex.Members);
+                {
+                    return Expression.New(constructor, args, members);
+                }
                 else
-                    return Expression.New(nex.Constructor, args);
+                {
+                    return Expression.New(constructor, args);
+                }
             }
             return nex;
         }
@@ -331,9 +394,14 @@ namespace IQ
         {
             NewExpression n = this.VisitNew(init.NewExpression);
             IEnumerable<MemberBinding> bindings = this.VisitBindingList(init.Bindings);
-            if (n != init.NewExpression || bindings != init.Bindings)
+            return this.UpdateMemberInit(init, n, bindings);
+        }
+
+        protected MemberInitExpression UpdateMemberInit(MemberInitExpression init, NewExpression nex, IEnumerable<MemberBinding> bindings)
+        {
+            if (nex != init.NewExpression || bindings != init.Bindings)
             {
-                return Expression.MemberInit(n, bindings);
+                return Expression.MemberInit(nex, bindings);
             }
             return init;
         }
@@ -342,9 +410,14 @@ namespace IQ
         {
             NewExpression n = this.VisitNew(init.NewExpression);
             IEnumerable<ElementInit> initializers = this.VisitElementInitializerList(init.Initializers);
-            if (n != init.NewExpression || initializers != init.Initializers)
+            return this.UpdateListInit(init, n, initializers);
+        }
+
+        protected ListInitExpression UpdateListInit(ListInitExpression init, NewExpression nex, IEnumerable<ElementInit> initializers)
+        {
+            if (nex != init.NewExpression || initializers != init.Initializers)
             {
-                return Expression.ListInit(n, initializers);
+                return Expression.ListInit(nex, initializers);
             }
             return init;
         }
@@ -352,15 +425,20 @@ namespace IQ
         protected virtual Expression VisitNewArray(NewArrayExpression na)
         {
             IEnumerable<Expression> exprs = this.VisitExpressionList(na.Expressions);
-            if (exprs != na.Expressions)
+            return this.UpdateNewArray(na, na.Type, exprs);
+        }
+
+        protected NewArrayExpression UpdateNewArray(NewArrayExpression na, Type arrayType, IEnumerable<Expression> expressions)
+        {
+            if (expressions != na.Expressions || na.Type != arrayType)
             {
                 if (na.NodeType == ExpressionType.NewArrayInit)
                 {
-                    return Expression.NewArrayInit(na.Type.GetElementType(), exprs);
+                    return Expression.NewArrayInit(arrayType.GetElementType(), expressions);
                 }
                 else
                 {
-                    return Expression.NewArrayBounds(na.Type.GetElementType(), exprs);
+                    return Expression.NewArrayBounds(arrayType.GetElementType(), expressions);
                 }
             }
             return na;
@@ -370,9 +448,14 @@ namespace IQ
         {
             IEnumerable<Expression> args = this.VisitExpressionList(iv.Arguments);
             Expression expr = this.Visit(iv.Expression);
-            if (args != iv.Arguments || expr != iv.Expression)
+            return this.UpdateInvocation(iv, expr, args);
+        }
+
+        protected InvocationExpression UpdateInvocation(InvocationExpression iv, Expression expression, IEnumerable<Expression> args)
+        {
+            if (args != iv.Arguments || expression != iv.Expression)
             {
-                return Expression.Invoke(expr, args);
+                return Expression.Invoke(expression, args);
             }
             return iv;
         }

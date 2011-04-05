@@ -19,6 +19,8 @@ namespace IQ.Data
         int indent = 2;
         int depth;
         Dictionary<TableAlias, string> aliases;
+        bool hideColumnAliases;
+        bool hideTableAliases;
 
         private TSqlFormatter()
         {
@@ -125,6 +127,11 @@ namespace IQ.Data
                 case (ExpressionType)DbExpressionType.RowCount:
                 case (ExpressionType)DbExpressionType.Projection:
                 case (ExpressionType)DbExpressionType.NamedValue:
+                case (ExpressionType)DbExpressionType.Insert:
+                case (ExpressionType)DbExpressionType.Update:
+                case (ExpressionType)DbExpressionType.Delete:
+                case (ExpressionType)DbExpressionType.Upsert:
+                case (ExpressionType)DbExpressionType.Function:
                     return base.Visit(exp);
 
                 case ExpressionType.ArrayLength:
@@ -939,7 +946,7 @@ namespace IQ.Data
 
         protected override Expression VisitColumn(ColumnExpression column)
         {
-            if (column.Alias != null)
+            if (column.Alias != null && !this.hideColumnAliases)
             {
                 sb.Append(GetAliasName(column.Alias));
                 sb.Append(".");
@@ -955,7 +962,7 @@ namespace IQ.Data
             {
                 sb.Append("(");
                 this.AppendNewLine(Indentation.Inner);
-                this.Visit(proj.Source);
+                this.Visit(proj.Select);
                 sb.Append(")");
                 this.Indent(Indentation.Outer);
             }
@@ -1061,8 +1068,11 @@ namespace IQ.Data
                 case DbExpressionType.Table:
                     TableExpression table = (TableExpression)source;
                     sb.Append(table.Name);
-                    sb.Append(" AS ");
-                    sb.Append(GetAliasName(table.Alias));
+                    if (!this.hideTableAliases)
+                    {
+                        sb.Append(" AS ");
+                        sb.Append(GetAliasName(table.Alias));
+                    }
                     break;
                 case DbExpressionType.Select:
                     SelectExpression select = (SelectExpression)source;
@@ -1247,6 +1257,154 @@ namespace IQ.Data
         {
             sb.Append("@" + value.Name);
             return value;
+        }
+
+        protected override Expression VisitInsert(InsertExpression insert)
+        {
+            sb.Append("INSERT INTO ");
+            sb.Append(insert.Table.Name);
+            sb.Append("(");
+            for (int i = 0, n = insert.Assignments.Count; i < n; i++)
+            {
+                ColumnAssignment ca = insert.Assignments[i];
+                if (i > 0) sb.Append(", ");
+                sb.Append(ca.Column.Name);
+            }
+            sb.Append(")");
+            this.AppendNewLine(Indentation.Same);
+            sb.Append("VALUES (");
+            for (int i = 0, n = insert.Assignments.Count; i < n; i++)
+            {
+                ColumnAssignment ca = insert.Assignments[i];
+                if (i > 0) sb.Append(", ");
+                this.Visit(ca.Expression);
+            }
+            sb.Append(")");
+
+            if (insert.Result != null)
+            {
+                this.AppendNewLine(Indentation.Same);
+                this.AppendNewLine(Indentation.Same);
+                ProjectionExpression proj = (ProjectionExpression)insert.Result;
+                this.Visit(proj.Select);
+            }
+
+            return insert;
+        }
+
+        protected override Expression VisitUpdate(UpdateExpression update)
+        {
+            sb.Append("UPDATE ");
+            sb.Append(this.GetAliasName(update.Table.Alias));
+            this.AppendNewLine(Indentation.Same);
+            bool saveHide = this.hideColumnAliases;
+            this.hideColumnAliases = true;
+            sb.Append("SET ");
+            for (int i = 0, n = update.Assignments.Count; i < n; i++)
+            {
+                ColumnAssignment ca = update.Assignments[i];
+                if (i > 0) sb.Append(", ");
+                this.Visit(ca.Column);
+                sb.Append(" = ");
+                this.Visit(ca.Expression);
+            }
+            this.hideColumnAliases = saveHide;
+            this.AppendNewLine(Indentation.Same);
+            sb.Append("FROM ");
+            this.VisitSource(update.Table);
+            if (update.Where != null)
+            {
+                this.AppendNewLine(Indentation.Same);
+                sb.Append("WHERE ");
+                this.Visit(update.Where);
+            }
+
+            if (update.Result != null)
+            {
+                this.AppendNewLine(Indentation.Same);
+                this.AppendNewLine(Indentation.Same);
+                sb.Append("IF @@ROWCOUNT > 0 BEGIN");
+                this.AppendNewLine(Indentation.Inner);
+                ProjectionExpression proj = (ProjectionExpression)update.Result;
+                this.Visit(proj.Select);
+                this.AppendNewLine(Indentation.Outer);
+                sb.Append("END");
+            }
+
+            return update;
+        }
+
+        protected override Expression VisitUpsert(UpsertExpression upsert)
+        {
+            if (upsert.Check != null)
+            {
+                sb.Append("IF ");
+                this.Visit(upsert.Check);
+                this.AppendNewLine(Indentation.Same);
+                sb.Append("BEGIN");
+                this.AppendNewLine(Indentation.Inner);
+                this.Visit(upsert.Update);
+                this.AppendNewLine(Indentation.Outer);
+                sb.Append("END ELSE BEGIN");
+                this.AppendNewLine(Indentation.Inner);
+                this.Visit(upsert.Insert);
+                this.AppendNewLine(Indentation.Outer);
+                sb.Append("END");
+            }
+            else
+            {
+                this.Visit(upsert.Update);
+                if (upsert.Update.Result != null)
+                {
+                    sb.Append(" ELSE BEGIN");
+                }
+                else
+                {
+                    this.AppendNewLine(Indentation.Same);
+                    this.AppendNewLine(Indentation.Same);
+                    sb.Append("IF @@ROWCOUNT = 0 BEGIN");
+                }
+                this.AppendNewLine(Indentation.Inner);
+                this.Visit(upsert.Insert);
+                this.AppendNewLine(Indentation.Outer);
+                sb.Append("END");
+            }
+            return upsert;
+        }
+
+        protected override Expression VisitDelete(DeleteExpression delete)
+        {
+            sb.Append("DELETE FROM ");
+            bool saveHideTable = this.hideTableAliases;
+            bool saveHideColumn = this.hideColumnAliases;
+            this.hideTableAliases = true;
+            this.hideColumnAliases = true;
+            this.VisitSource(delete.Table);
+            if (delete.Where != null)
+            {
+                this.AppendNewLine(Indentation.Same);
+                sb.Append("WHERE ");
+                this.Visit(delete.Where);
+            }
+            this.hideTableAliases = saveHideTable;
+            this.hideColumnAliases = saveHideColumn;
+            return delete;
+        }
+
+        protected override Expression VisitFunction(FunctionExpression func)
+        {
+            sb.Append(func.Name);
+            if (func.Arguments.Count > 0)
+            {
+                sb.Append("(");
+                for (int i = 0, n = func.Arguments.Count; i < n; i++)
+                {
+                    if (i > 0) sb.Append(", ");
+                    this.Visit(func.Arguments[i]);
+                }
+                sb.Append(")");
+            }
+            return func;
         }
     }
 }

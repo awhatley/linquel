@@ -21,6 +21,11 @@ namespace Test
             new NorthwindTranslationTests().RunTests(db, @"..\..\baseline.txt", @"newbase.txt", executeQueries);
         }
 
+        public static void Run(Northwind db, bool executeQueries, string testName)
+        {
+            new NorthwindTranslationTests().RunTest(db, @"..\..\baseline.txt", executeQueries, testName);
+        }
+
         public void TestWhere()
         {
             TestQuery(db.Customers.Where(c => c.City == "London"));

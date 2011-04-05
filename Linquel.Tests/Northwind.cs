@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Data.SqlClient;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -19,6 +20,7 @@ namespace Test
     {
         public string CustomerID;
         public string ContactName;
+        public string CompanyName;
         public string Phone;
         public string City;
         public string Country;
@@ -49,14 +51,14 @@ namespace Test
 
     public class Northwind
     {
-        public IQueryable<Customer> Customers;
-        public IQueryable<Order> Orders;
-        public IQueryable<OrderDetail> OrderDetails;
-        public IQueryable<Product> Products;
+        public IUpdatableTable<Customer> Customers;
+        public IUpdatableTable<Order> Orders;
+        public IUpdatableTable<OrderDetail> OrderDetails;
+        public IUpdatableTable<Product> Products;
 
         private IQueryProvider provider;
 
-        public static QueryPolicy StandardPolicy = new QueryPolicy(new ImplicitMapping(new TSqlLanguage()));
+        public static QueryPolicy StandardPolicy = new QueryPolicy(new TestMapping(new TSqlLanguage()));
 
         public Northwind(DbConnection connection, TextWriter log)
             : this(connection, log, StandardPolicy)
@@ -64,17 +66,17 @@ namespace Test
         }
 
         public Northwind(DbConnection connection, TextWriter log, QueryPolicy policy)
-            : this (new DbQueryProvider(connection, policy, log))
+            : this(new DbQueryProvider(connection, policy, log))
         {
         }
 
-        public Northwind(IQueryProvider provider) 
+        public Northwind(IQueryProvider provider)
         {
             this.provider = provider;
-            this.Customers = new Query<Customer>(this.provider);
-            this.Orders = new Query<Order>(this.provider);
-            this.OrderDetails = new Query<OrderDetail>(this.provider);
-            this.Products = new Query<Product>(this.provider);
+            this.Customers = new UpdatableTable<Customer>(this.provider, "Customers");
+            this.Orders = new UpdatableTable<Order>(this.provider, "Orders");
+            this.OrderDetails = new UpdatableTable<OrderDetail>(this.provider, "Order Details");
+            this.Products = new UpdatableTable<Product>(this.provider, "Products");
         }
 
         public IQueryProvider Provider

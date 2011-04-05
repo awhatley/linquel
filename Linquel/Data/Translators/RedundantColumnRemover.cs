@@ -50,7 +50,9 @@ namespace IQ.Data
             for (int i = 0, n = cols.Count; i < n - 1; i++)
             {
                 ColumnDeclaration ci = cols[i];
-                ColumnExpression cxi = new ColumnExpression(ci.Expression.Type, select.Alias, ci.Name);
+                ColumnExpression cix = ci.Expression as ColumnExpression;
+                QueryType qt = cix != null ? cix.QueryType : null;
+                ColumnExpression cxi = new ColumnExpression(ci.Expression.Type, qt, select.Alias, ci.Name);
                 for (int j = i + 1; j < n; j++)
                 {
                     if (!removed.Get(j))
@@ -59,7 +61,7 @@ namespace IQ.Data
                         if (SameExpression(ci.Expression, cj.Expression))
                         {
                             // any reference to 'j' should now just be a reference to 'i'
-                            ColumnExpression cxj = new ColumnExpression(cj.Expression.Type, select.Alias, cj.Name);
+                            ColumnExpression cxj = new ColumnExpression(cj.Expression.Type, qt, select.Alias, cj.Name);
                             this.map.Add(cxj, cxi);
                             removed.Set(j, true);
                             anyRemoved = true;

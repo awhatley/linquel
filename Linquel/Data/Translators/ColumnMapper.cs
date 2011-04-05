@@ -40,7 +40,7 @@ namespace IQ.Data
         {
             if (this.oldAliases.Contains(column.Alias))
             {
-                return new ColumnExpression(column.Type, this.newAlias, column.Name);
+                return new ColumnExpression(column.Type, column.QueryType, this.newAlias, column.Name);
             }
             return column;
         }

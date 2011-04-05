@@ -35,31 +35,28 @@ namespace IQ.Data
         protected override Expression VisitProjection(ProjectionExpression proj)
         {
             Expression projector = this.Visit(proj.Projector);
-            if (projector != proj.Projector)
-            {
-                return new ProjectionExpression(proj.Source, projector, proj.Aggregator);
-            }
-            return proj;
+            return this.UpdateProjection(proj, proj.Select, projector, proj.Aggregator);
         }
 
-        protected override Expression VisitMemberInit(MemberInitExpression init)
+        protected override Expression VisitEntity(EntityExpression entity)
         {
-            if (this.mapping.IsEntity(init.Type))
+            MemberInitExpression init = entity.Expression as MemberInitExpression;
+            if (init != null)
             {
                 var save = this.includeScope;
                 this.includeScope = new ScopedDictionary<MemberInfo,bool>(this.includeScope);
 
                 Dictionary<MemberInfo, MemberBinding> existing = init.Bindings.ToDictionary(b => b.Member);
                 List<MemberBinding> newBindings = null;
-                foreach (var mi in this.mapping.GetMappedMembers(init.Type))
+                foreach (var mi in this.mapping.GetMappedMembers(entity.Entity))
                 {
-                    if (!existing.ContainsKey(mi) && this.mapping.IsRelationship(mi) && this.policy.IsIncluded(mi))
+                    if (!existing.ContainsKey(mi) && this.mapping.IsRelationship(entity.Entity, mi) && this.policy.IsIncluded(mi))
                     {
                         if (this.includeScope.ContainsKey(mi))
                         {
                             throw new NotSupportedException(string.Format("Cannot include '{0}.{1}' recursively.", mi.DeclaringType.Name, mi.Name));
                         }
-                        Expression me = this.mapping.GetMemberExpression(init, mi);
+                        Expression me = this.mapping.GetMemberExpression(init, entity.Entity, mi);
                         if (newBindings == null)
                         {
                             newBindings = new List<MemberBinding>(init.Bindings);
@@ -69,12 +66,12 @@ namespace IQ.Data
                 }
                 if (newBindings != null)
                 {
-                    init = Expression.MemberInit(init.NewExpression, newBindings);
+                    entity = new EntityExpression(entity.Entity, Expression.MemberInit(init.NewExpression, newBindings));
                 }
 
                 this.includeScope = save;
             }
-            return base.VisitMemberInit(init);
+            return base.VisitEntity(entity);
         }
     }
 }

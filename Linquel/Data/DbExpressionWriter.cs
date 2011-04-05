@@ -54,6 +54,20 @@ namespace IQ.Data
                     return this.VisitOuterJoined((OuterJoinedExpression)exp);
                 case DbExpressionType.Column:
                     return this.VisitColumn((ColumnExpression)exp);
+                case DbExpressionType.Insert:
+                    return this.VisitInsert((InsertExpression)exp);
+                case DbExpressionType.Update:
+                    return this.VisitUpdate((UpdateExpression)exp);
+                case DbExpressionType.Upsert:
+                    return this.VisitUpsert((UpsertExpression)exp);
+                case DbExpressionType.Delete:
+                    return this.VisitDelete((DeleteExpression)exp);
+                case DbExpressionType.Batch:
+                    return this.VisitBatch((BatchExpression)exp);
+                case DbExpressionType.Function:
+                    return this.VisitFunction((FunctionExpression)exp);
+                case DbExpressionType.Entity:
+                    return this.VisitEntity((EntityExpression)exp);
                 default:
                     if (exp is DbExpression)
                     {
@@ -77,11 +91,11 @@ namespace IQ.Data
 
         protected virtual Expression VisitProjection(ProjectionExpression projection)
         {
-            this.AddAlias(projection.Source.Alias);
+            this.AddAlias(projection.Select.Alias);
             this.Write("Project(");
             this.WriteLine(Indentation.Inner);
             this.Write("@\"");
-            this.Visit(projection.Source);
+            this.Visit(projection.Select);
             this.Write("\",");
             this.WriteLine(Indentation.Same);
             this.Visit(projection.Projector);
@@ -95,7 +109,7 @@ namespace IQ.Data
 
         protected virtual Expression VisitClientJoin(ClientJoinExpression join)
         {
-            this.AddAlias(join.Projection.Source.Alias);
+            this.AddAlias(join.Projection.Select.Alias);
             this.Write("ClientJoin(");
             this.WriteLine(Indentation.Inner);
             this.Write("OuterKey(");
@@ -129,6 +143,84 @@ namespace IQ.Data
         {
             this.Write(select.QueryText);
             return select;
+        }
+
+        protected virtual Expression VisitInsert(InsertExpression insert)
+        {
+            this.Write(TSqlFormatter.Format(insert));
+            return insert;
+        }
+
+        protected virtual Expression VisitDelete(DeleteExpression delete)
+        {
+            this.Write(TSqlFormatter.Format(delete));
+            return delete;
+        }
+
+        protected virtual Expression VisitUpdate(UpdateExpression update)
+        {
+            this.Write(TSqlFormatter.Format(update));
+            return update;
+        }
+
+        protected virtual Expression VisitUpsert(UpsertExpression upsert)
+        {
+            this.Write(TSqlFormatter.Format(upsert));
+            return upsert;
+        }
+
+        protected virtual Expression VisitBatch(BatchExpression batch)
+        {
+            this.Write("Batch(");
+            this.WriteLine(Indentation.Inner);
+            this.Visit(batch.Input);
+            this.Write(",");
+            this.WriteLine(Indentation.Same);
+            this.Visit(batch.Operation);
+            this.Write(",");
+            this.WriteLine(Indentation.Same);
+            this.Visit(batch.BatchSize);
+            this.Write(", ");
+            this.Visit(batch.Stream);
+            this.WriteLine(Indentation.Outer);
+            this.Write(")");
+            return batch;
+        }
+
+        protected virtual Expression VisitFunction(FunctionExpression function)
+        {
+            this.Write(function.Name);
+            if (function.Arguments.Count > 0)
+            {
+                this.Write("(");
+                this.VisitExpressionList(function.Arguments);
+                this.Write(")");
+            }
+            return function;
+        }
+
+        protected virtual Expression VisitEntity(EntityExpression entity)
+        {
+            this.Visit(entity.Expression);
+            return entity;
+        }
+
+        protected override Expression VisitConstant(ConstantExpression c)
+        {
+            if (c.Type == typeof(QueryCommand))
+            {
+                QueryCommand qc = (QueryCommand)c.Value;
+                this.Write("new QueryCommand {");
+                this.WriteLine(Indentation.Inner);
+                this.Write("\"" + qc.CommandText + "\"");
+                this.Write(",");
+                this.WriteLine(Indentation.Same);
+                this.Visit(Expression.Constant(qc.Parameters));
+                this.Write(")");
+                this.WriteLine(Indentation.Outer);
+                return c;
+            }
+            return base.VisitConstant(c);
         }
 
         protected virtual Expression VisitColumn(ColumnExpression column)

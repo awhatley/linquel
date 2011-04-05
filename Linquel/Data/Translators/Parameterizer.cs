@@ -17,26 +17,58 @@ namespace IQ.Data
     /// </summary>
     public class Parameterizer : DbExpressionVisitor
     {
+        QueryLanguage language;
         Dictionary<object, NamedValueExpression> map = new Dictionary<object, NamedValueExpression>();
-        Dictionary<Expression, NamedValueExpression> pmap = new Dictionary<Expression,NamedValueExpression>();
+        Dictionary<HashedExpression, NamedValueExpression> pmap = new Dictionary<HashedExpression, NamedValueExpression>();
 
-        private Parameterizer()
+        private Parameterizer(QueryLanguage language)
         {
+            this.language = language;
         }
 
-        public static Expression Parameterize(Expression expression)
+        public static Expression Parameterize(QueryLanguage language, Expression expression)
         {
-            return new Parameterizer().Visit(expression);
+            return new Parameterizer(language).Visit(expression);
         }
 
         protected override Expression VisitProjection(ProjectionExpression proj)
         {
             // don't parameterize the projector or aggregator!
-            SelectExpression select = (SelectExpression)this.Visit(proj.Source);
-            if (select != proj.Source) {
-                return new ProjectionExpression(select, proj.Projector, proj.Aggregator);
+            SelectExpression select = (SelectExpression)this.Visit(proj.Select);
+            return this.UpdateProjection(proj, select, proj.Projector, proj.Aggregator);
+        }
+
+        protected override Expression VisitBinary(BinaryExpression b)
+        {
+            Expression left = this.Visit(b.Left);
+            Expression right = this.Visit(b.Right);
+            if (left.NodeType == (ExpressionType)DbExpressionType.NamedValue
+             && right.NodeType == (ExpressionType)DbExpressionType.Column)
+            {
+                NamedValueExpression nv = (NamedValueExpression)left;
+                ColumnExpression c = (ColumnExpression)right;
+                left = new NamedValueExpression(nv.Name, c.QueryType, nv.Value);
             }
-            return proj;
+            else if (b.Right.NodeType == (ExpressionType)DbExpressionType.NamedValue
+             && b.Left.NodeType == (ExpressionType)DbExpressionType.Column)
+            {
+                NamedValueExpression nv = (NamedValueExpression)right;
+                ColumnExpression c = (ColumnExpression)left;
+                right = new NamedValueExpression(nv.Name, c.QueryType, nv.Value);
+            }
+            return this.UpdateBinary(b, left, right, b.Conversion, b.IsLiftedToNull, b.Method);
+        }
+
+        protected override ColumnAssignment VisitColumnAssignment(ColumnAssignment ca)
+        {
+            ca = base.VisitColumnAssignment(ca);
+            Expression expression = ca.Expression;
+            NamedValueExpression nv = expression as NamedValueExpression;
+            if (nv != null)
+            {
+                expression = new NamedValueExpression(nv.Name, ca.Column.QueryType, nv.Value);
+            }
+            return this.UpdateColumnAssignment(ca, ca.Column, expression);
         }
 
         int iParam = 0;
@@ -46,7 +78,7 @@ namespace IQ.Data
                 NamedValueExpression nv;
                 if (!this.map.TryGetValue(c.Value, out nv)) { // re-use same name-value if same value
                     string name = "p" + (iParam++);
-                    nv = new NamedValueExpression(name, c);
+                    nv = new NamedValueExpression(name, this.language.TypeSystem.GetColumnType(c.Type), c);
                     this.map.Add(c.Value, nv);
                 }
                 return nv;
@@ -59,14 +91,27 @@ namespace IQ.Data
             return this.GetNamedValue(p);
         }
 
+        protected override Expression VisitMemberAccess(MemberExpression m)
+        {
+            m = (MemberExpression)base.VisitMemberAccess(m);
+            NamedValueExpression nv = m.Expression as NamedValueExpression;
+            if (nv != null) 
+            {
+                Expression x = Expression.MakeMemberAccess(nv.Value, m.Member);
+                return GetNamedValue(x);
+            }
+            return m;
+        }
+
         private Expression GetNamedValue(Expression e)
         {
             NamedValueExpression nv;
-            if (!this.pmap.TryGetValue(e, out nv))
+            HashedExpression he = new HashedExpression(e);
+            if (!this.pmap.TryGetValue(he, out nv))
             {
                 string name = "p" + (iParam++);
-                nv = new NamedValueExpression(name, e);
-                this.pmap.Add(e, nv);
+                nv = new NamedValueExpression(name, this.language.TypeSystem.GetColumnType(e.Type), e);
+                this.pmap.Add(he, nv);
             }
             return nv;
         }
@@ -91,27 +136,53 @@ namespace IQ.Data
                     return false;
             }
         }
-    }
 
-    internal class NamedValueGatherer : DbExpressionVisitor
-    {
-        HashSet<NamedValueExpression> namedValues = new HashSet<NamedValueExpression>();
-
-        private NamedValueGatherer()
+        struct HashedExpression : IEquatable<HashedExpression>
         {
-        }
+            Expression expression;
+            int hashCode;
 
-        internal static ReadOnlyCollection<NamedValueExpression> Gather(Expression expr)
-        {
-            NamedValueGatherer gatherer = new NamedValueGatherer();
-            gatherer.Visit(expr);
-            return gatherer.namedValues.ToList().AsReadOnly();
-        }
+            public HashedExpression(Expression expression)
+            {
+                this.expression = expression;
+                this.hashCode = Hasher.ComputeHash(expression);
+            }
 
-        protected override Expression VisitNamedValue(NamedValueExpression value)
-        {
-            this.namedValues.Add(value);
-            return value;
+            public override bool Equals(object obj)
+            {
+                if (!(obj is HashedExpression))
+                    return false;
+ 	            return this.Equals((HashedExpression)obj);
+            }
+
+            public bool Equals(HashedExpression other)
+            {
+                return this.hashCode == other.hashCode &&
+                    DbExpressionComparer.AreEqual(this.expression, other.expression);
+            }
+
+            public override int GetHashCode()
+            {
+                return this.hashCode;
+            }
+
+            class Hasher : DbExpressionVisitor
+            {
+                int hc;
+
+                internal static int ComputeHash(Expression expression)
+                {
+                    var hasher = new Hasher();
+                    hasher.Visit(expression);
+                    return hasher.hc;
+                }
+
+                protected override Expression VisitConstant(ConstantExpression c)
+                {
+                    hc = hc + ((c.Value != null) ? c.Value.GetHashCode() : 0);
+                    return c;
+                }
+            }
         }
     }
 }

@@ -44,6 +44,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Northwind.cs" />
+    <Compile Include="NorthwindCUDTests.cs" />
     <Compile Include="NorthwindExecutionTests.cs" />
     <Compile Include="NorthwindTestHarness.cs" />
     <Compile Include="NorthwindTranslationTests.cs" />
@@ -57,6 +58,9 @@
       <Project>{77066380-7810-4508-8DFF-42EC85D51330}</Project>
       <Name>Linquel</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -22,26 +22,16 @@ namespace IQ.Data
         {
         }
 
-        public override bool IsEntity(Type type)
+        public override MappingEntity GetEntity(Type type)
         {
-            // everything is an entity except scalar primitives
-            return !this.Language.IsScalar(type);
+            string tableName = this.InferTableName(type);
+            return this.GetEntity(type, tableName);
         }
 
-        public override bool IsMapped(MemberInfo member)
-        {
-            return true;
-        }
-
-        public override bool IsColumn(MemberInfo member)
-        {
-            return this.Language.IsScalar(TypeHelper.GetMemberType(member));
-        }
-
-        public override bool IsIdentity(MemberInfo member)
+        public override bool IsIdentity(MappingEntity entity, MemberInfo member)
         {
             // Customers has CustomerID, Orders has OrderID, etc
-            if (this.IsColumn(member)) 
+            if (this.IsColumn(entity, member)) 
             {
                 string name = NameWithoutTrailingDigits(member.Name);
                 return member.Name.EndsWith("ID") && member.DeclaringType.Name.StartsWith(member.Name.Substring(0, member.Name.Length - 2)); 
@@ -63,40 +53,23 @@ namespace IQ.Data
             return name;
         }
 
-        public override bool IsRelationship(MemberInfo member)
+        public override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
         {
-            if (!IsColumn(member))
+            if (IsMapped(entity, member) && !IsColumn(entity, member))
             {
                 Type otherType = TypeHelper.GetElementType(TypeHelper.GetMemberType(member));
-                if (IsEntity(otherType))
-                    return true;
+                return !this.Language.IsScalar(otherType);
             }
             return false;
         }
 
-        public override Type GetRelatedType(MemberInfo member)
+        public override void GetAssociationKeys(MappingEntity entity, MemberInfo member, out List<MemberInfo> members1, out List<MemberInfo> members2)
         {
-            return TypeHelper.GetElementType(TypeHelper.GetMemberType(member));
-        }
-
-        public override string GetTableName(Type rowType)
-        {
-            return this.Language.Quote(SplitWords(Plural(rowType.Name)));
-        }
-
-        public override string GetColumnName(MemberInfo member)
-        {
-            return member.Name;
-        }
-
-        public override void GetAssociationKeys(MemberInfo member, out List<MemberInfo> members1, out List<MemberInfo> members2)
-        {
-            Type type1 = member.DeclaringType;
-            Type type2 = GetRelatedType(member);
+            MappingEntity entity2 = GetRelatedEntity(entity, member);
 
             // find all members in common (same name)
-            var map1 = this.GetMappedMembers(type1).Where(m => this.IsColumn(m)).ToDictionary(m => m.Name);
-            var map2 = this.GetMappedMembers(type2).Where(m => this.IsColumn(m)).ToDictionary(m => m.Name);
+            var map1 = this.GetMappedMembers(entity).Where(m => this.IsColumn(entity, m)).ToDictionary(m => m.Name);
+            var map2 = this.GetMappedMembers(entity2).Where(m => this.IsColumn(entity2, m)).ToDictionary(m => m.Name);
             var commonNames = map1.Keys.Intersect(map2.Keys).OrderBy(k => k);
             members1 = new List<MemberInfo>();
             members2 = new List<MemberInfo>();
@@ -105,6 +78,17 @@ namespace IQ.Data
                 members1.Add(map1[name]);
                 members2.Add(map2[name]);
             }
+        }
+
+        public override string GetTableName(MappingEntity entity)
+        {
+            string name = !string.IsNullOrEmpty(entity.TableID) ? entity.TableID : this.InferTableName(entity.Type);
+            return this.Language.Quote(name);
+        }
+
+        private string InferTableName(Type rowType)
+        {
+            return SplitWords(Plural(rowType.Name));
         }
 
         public static string SplitWords(string name)

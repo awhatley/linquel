@@ -48,6 +48,7 @@
   <ItemGroup>
     <Compile Include="CompoundKey.cs" />
     <Compile Include="Data\DbExpressionComparer.cs" />
+    <Compile Include="Data\DbExpressionExtensions.cs" />
     <Compile Include="Data\DbExpressionReplacer.cs" />
     <Compile Include="Data\DbExpressions.cs" />
     <Compile Include="Data\DbExpressionVisitor.cs" />
@@ -59,6 +60,9 @@
     <Compile Include="Data\QueryLanguage.cs" />
     <Compile Include="Data\QueryMapping.cs" />
     <Compile Include="Data\QueryPolicy.cs" />
+    <Compile Include="Data\QueryTable.cs" />
+    <Compile Include="Data\QueryTypeSystem.cs" />
+    <Compile Include="Data\SqlQueryProvider.cs" />
     <Compile Include="Data\Translators\AggregateChecker.cs" />
     <Compile Include="Data\Translators\AggregateRewriter.cs" />
     <Compile Include="Data\Translators\ClientJoinedProjectionRewriter.cs" />
@@ -66,6 +70,7 @@
     <Compile Include="Data\Translators\ColumnProjector.cs" />
     <Compile Include="Data\Translators\CrossApplyRewriter.cs" />
     <Compile Include="Data\Translators\DeclaredAliasGatherer.cs" />
+    <Compile Include="Data\Translators\NamedValueGatherer.cs" />
     <Compile Include="Data\Translators\OrderByRewriter.cs" />
     <Compile Include="Data\Translators\Parameterizer.cs" />
     <Compile Include="Data\Translators\QueryBinder.cs" />
@@ -83,7 +88,9 @@
     <Compile Include="Data\Translators\UnusedColumnRemover.cs" />
     <Compile Include="Data\TSqlFormatter.cs" />
     <Compile Include="Data\TSqlLanguage.cs" />
+    <Compile Include="Data\TSqlTypeSystem.cs" />
     <Compile Include="DeferredList.cs" />
+    <Compile Include="EnumerateOnce.cs" />
     <Compile Include="ExpressionComparer.cs" />
     <Compile Include="ExpressionReplacer.cs" />
     <Compile Include="ExpressionVisitor.cs" />
@@ -94,9 +101,11 @@
     <Compile Include="Query.cs" />
     <Compile Include="QueryCompiler.cs" />
     <Compile Include="QueryProvider.cs" />
-    <Compile Include="RootQueryableFinder.cs" />
+    <Compile Include="ReadOnlyExtensions.cs" />
     <Compile Include="ScopedDictionary.cs" />
+    <Compile Include="TypedSubtreeFinder.cs" />
     <Compile Include="TypeHelper.cs" />
+    <Compile Include="Updatable.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

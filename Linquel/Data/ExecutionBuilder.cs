@@ -135,7 +135,7 @@ namespace IQ.Data
 
             ConstructorInfo kvpConstructor = typeof(KeyValuePair<,>).MakeGenericType(innerKey.Type, join.Projection.Projector.Type).GetConstructor(new Type[] { innerKey.Type, join.Projection.Projector.Type });
             Expression constructKVPair = Expression.New(kvpConstructor, innerKey, join.Projection.Projector);
-            ProjectionExpression newProjection = new ProjectionExpression(join.Projection.Source, constructKVPair);
+            ProjectionExpression newProjection = new ProjectionExpression(join.Projection.Select, constructKVPair);
 
             int iLookup = ++nLookup;
             Expression execution = this.ExecuteProjection(newProjection, false);
@@ -191,10 +191,8 @@ namespace IQ.Data
 
         private Expression ExecuteProjection(ProjectionExpression projection, bool okayToDefer)
         {
-            okayToDefer &= (this.receivingMember != null && this.policy.IsDeferLoaded(this.receivingMember));
-
             // parameterize query
-            projection = (ProjectionExpression)Parameterizer.Parameterize(projection);
+            projection = (ProjectionExpression)this.policy.Mapping.Language.Parameterize(projection);
 
             if (this.scope != null)
             {
@@ -202,33 +200,32 @@ namespace IQ.Data
                 projection = (ProjectionExpression)OuterParameterizer.Parameterize(this.scope.Alias, projection);
             }
 
+            string commandText = this.policy.Mapping.Language.Format(projection.Select);
+            ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(projection.Select);
+            QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
+            Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
+
+            return this.ExecuteProjection(projection, okayToDefer, command, values);
+        }
+
+        private Expression ExecuteProjection(ProjectionExpression projection, bool okayToDefer, QueryCommand command, Expression[] values)
+        {
+            okayToDefer &= (this.receivingMember != null && this.policy.IsDeferLoaded(this.receivingMember));
+
             var saveScope = this.scope;
             ParameterExpression reader = Expression.Parameter(typeof(DbDataReader), "r" + nReaders++);
-            this.scope = new Scope(this.scope, reader, projection.Source.Alias, projection.Source.Columns);
+            this.scope = new Scope(this.scope, reader, projection.Select.Alias, projection.Select.Columns);
             LambdaExpression projector = Expression.Lambda(this.Visit(projection.Projector), reader);
             this.scope = saveScope;
-
-            string commandText = this.policy.Mapping.Language.Format(projection.Source);
-            ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(projection.Source);
-            string[] names = namedValues.Select(v => v.Name).ToArray();
-            Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
 
             string methExecute = okayToDefer 
                 ? "ExecuteDeferred" 
                 : "Execute";
 
-            if (okayToDefer)
-            {
-            }
-
             // call low-level execute directly on supplied DbQueryProvider
             Expression result = Expression.Call(this.provider, methExecute, new Type[] { projector.Body.Type },
-                Expression.New(
-                    typeof(QueryCommand<>).MakeGenericType(projector.Body.Type).GetConstructors()[0],
-                    Expression.Constant(commandText),
-                    Expression.Constant(names),
-                    projector
-                    ),
+                Expression.Constant(command),
+                projector,
                 Expression.NewArrayInit(typeof(object), values)
                 );
 
@@ -238,6 +235,124 @@ namespace IQ.Data
                 result = DbExpressionReplacer.Replace(projection.Aggregator.Body, projection.Aggregator.Parameters[0], result);
             }
             return result;
+        }
+
+        protected override Expression VisitBatch(BatchExpression batch)
+        {
+            // parameterize query
+            Expression operation = this.policy.Mapping.Language.Parameterize(batch.Operation.Body);
+
+            string commandText = this.policy.Mapping.Language.Format(operation);
+            var namedValues = NamedValueGatherer.Gather(operation);
+            QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
+            Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
+
+            Expression paramSets = Expression.Call(typeof(Enumerable), "Select", new Type[] { batch.Operation.Parameters[1].Type, typeof(object[]) },
+                batch.Input,
+                Expression.Lambda(Expression.NewArrayInit(typeof(object), values), new [] { batch.Operation.Parameters[1] })
+                );
+
+            Expression plan = null;
+
+            CommandWithResultExpression cwr = operation as CommandWithResultExpression;
+            if (cwr != null && cwr.Result != null)
+            {
+                ProjectionExpression projection = (ProjectionExpression)cwr.Result;
+                var saveScope = this.scope;
+                ParameterExpression reader = Expression.Parameter(typeof(DbDataReader), "r" + nReaders++);
+                this.scope = new Scope(this.scope, reader, projection.Select.Alias, projection.Select.Columns);
+                LambdaExpression projector = Expression.Lambda(this.Visit(projection.Projector), reader);
+                this.scope = saveScope;
+
+                var columns = ColumnGatherer.Gather(projection.Projector);
+                command = new QueryCommand(command.CommandText, command.Parameters, columns);
+
+                plan = Expression.Call(this.provider, "ExecuteBatch", new Type[] { projector.Body.Type },
+                    Expression.Constant(command),
+                    paramSets,
+                    projector,
+                    batch.BatchSize,
+                    batch.Stream
+                    );
+            }
+            else
+            {
+                plan = Expression.Call(this.provider, "ExecuteBatch", null,
+                    Expression.Constant(command),
+                    paramSets,
+                    batch.BatchSize,
+                    batch.Stream
+                    );
+            }
+
+            return plan;
+        }
+
+        protected override Expression VisitCommand(CommandExpression command)
+        {
+            switch ((DbExpressionType)command.NodeType)
+            {
+                case DbExpressionType.Insert:
+                case DbExpressionType.Update:
+                case DbExpressionType.Upsert:
+                    return this.ExecuteCommandWithResult((CommandWithResultExpression)command);
+                case DbExpressionType.Delete:
+                    return this.ExecuteCommand(command);
+                default:
+                    return base.VisitCommand(command);
+            }
+        }
+
+        private Expression ExecuteCommand(Expression expression)
+        {
+            // parameterize query
+            expression = this.policy.Mapping.Language.Parameterize(expression);
+
+            string commandText = this.policy.Mapping.Language.Format(expression);
+            ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(expression);
+            QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
+            Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
+
+            Expression plan = Expression.Call(this.provider, "ExecuteCommand", null,
+                Expression.Constant(command),
+                Expression.NewArrayInit(typeof(object), values)
+                );
+
+            return plan;
+        }
+
+        private Expression ExecuteCommandWithResult(CommandWithResultExpression expression)
+        {
+            if (expression.Result == null)
+            {
+                return this.ExecuteCommand(expression);
+            }
+            else
+            {
+                // parameterize query
+                expression = (CommandWithResultExpression) this.policy.Mapping.Language.Parameterize(expression);
+
+                string commandText = this.policy.Mapping.Language.Format(expression);
+                ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(expression);
+                QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
+                Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
+
+                ProjectionExpression proj = expression.Result as ProjectionExpression;
+                if (proj != null)
+                {
+                    return this.ExecuteProjection(proj, false, command, values);
+                }
+                else
+                {
+                    // unhandled result expression kinds
+                    throw new NotImplementedException();
+                }
+            }
+        }
+
+        protected override Expression VisitEntity(EntityExpression entity)
+        {
+            return this.Visit(entity.Expression);
         }
 
         protected override Expression VisitOuterJoined(OuterJoinedExpression outer)
@@ -345,12 +460,8 @@ namespace IQ.Data
 
             protected override Expression VisitProjection(ProjectionExpression proj)
             {
-                SelectExpression select = (SelectExpression)this.Visit(proj.Source);
-                if (select != proj.Source)
-                {
-                    return new ProjectionExpression(select, proj.Projector, proj.Aggregator);
-                }
-                return proj;
+                SelectExpression select = (SelectExpression)this.Visit(proj.Select);
+                return this.UpdateProjection(proj, select, proj.Projector, proj.Aggregator);
             }
 
             protected override Expression VisitColumn(ColumnExpression column)
@@ -360,10 +471,31 @@ namespace IQ.Data
                     NamedValueExpression nv;
                     if (!this.map.TryGetValue(column, out nv)) 
                     {
-                        nv = new NamedValueExpression("n" + (iParam++), column);
+                        nv = new NamedValueExpression("n" + (iParam++), column.QueryType, column);
                         this.map.Add(column, nv);
                     }
                     return nv;
+                }
+                return column;
+            }
+        }
+
+        class ColumnGatherer : DbExpressionVisitor
+        {
+            Dictionary<string, ColumnExpression> columns = new Dictionary<string, ColumnExpression>();
+
+            internal static IEnumerable<ColumnExpression> Gather(Expression expression)
+            {
+                var gatherer = new ColumnGatherer();
+                gatherer.Visit(expression);
+                return gatherer.columns.Values;
+            }
+
+            protected override Expression VisitColumn(ColumnExpression column)
+            {
+                if (!this.columns.ContainsKey(column.Name))
+                {
+                    this.columns.Add(column.Name, column);
                 }
                 return column;
             }

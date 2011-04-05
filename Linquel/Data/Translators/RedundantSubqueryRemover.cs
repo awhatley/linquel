@@ -45,9 +45,9 @@ namespace IQ.Data
         protected override Expression VisitProjection(ProjectionExpression proj)
         {
             proj = (ProjectionExpression)base.VisitProjection(proj);
-            if (proj.Source.From is SelectExpression) 
+            if (proj.Select.From is SelectExpression) 
             {
-                List<SelectExpression> redundant = RedundantSubqueryGatherer.Gather(proj.Source);
+                List<SelectExpression> redundant = RedundantSubqueryGatherer.Gather(proj.Select);
                 if (redundant != null) 
                 {
                     proj = SubqueryRemover.Remove(proj, redundant);

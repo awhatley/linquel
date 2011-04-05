@@ -82,26 +82,50 @@ namespace IQ
                 {
                     // first identify the query provider being used
                     Expression body = this.query.Body;
-                    ConstantExpression root = RootQueryableFinder.Find(body) as ConstantExpression;
-                    if (root == null && args != null && args.Length > 0)
-                    {
-                        Expression replaced = ExpressionReplacer.ReplaceAll(
-                            body,
-                            this.query.Parameters.ToArray(),
-                            args.Select((a, i) => Expression.Constant(a, this.query.Parameters[i].Type)).ToArray()
-                            );
-                        body = PartialEvaluator.Eval(replaced);
-                        root = RootQueryableFinder.Find(body) as ConstantExpression;
-                    }                    
-                    if (root == null)
+
+                    // ask the query provider to compile the query by 'executing' the lambda expression
+                    IQueryProvider provider = this.FindProvider(body, args);
+                    if (provider == null)
                     {
                         throw new InvalidOperationException("Could not find query provider");
                     }
-                    // ask the query provider to compile the query by 'executing' the lambda expression
-                    IQueryProvider provider = ((IQueryable)root.Value).Provider;
+
                     Delegate result = (Delegate)provider.Execute(this.query);
                     System.Threading.Interlocked.CompareExchange(ref this.fnQuery, result, null);
                 }
+            }
+
+            internal IQueryProvider FindProvider(Expression expression, object[] args)
+            {
+                ConstantExpression root = TypedSubtreeFinder.Find(expression, typeof(IQueryProvider)) as ConstantExpression;
+                if (root == null)
+                {
+                    root = TypedSubtreeFinder.Find(expression, typeof(IQueryable)) as ConstantExpression;
+                }
+                if (root == null && args != null && args.Length > 0)
+                {
+                    Expression replaced = ExpressionReplacer.ReplaceAll(
+                        expression,
+                        this.query.Parameters.ToArray(),
+                        args.Select((a, i) => Expression.Constant(a, this.query.Parameters[i].Type)).ToArray()
+                        );
+                    Expression partial = PartialEvaluator.Eval(replaced);
+                    return FindProvider(partial, null);
+                }
+                if (root != null) 
+                {
+                    IQueryProvider provider = root.Value as IQueryProvider;
+                    if (provider == null)
+                    {
+                        IQueryable query = root.Value as IQueryable;
+                        if (query != null)
+                        {
+                            provider = query.Provider;
+                        }
+                    }
+                    return provider;
+                }
+                return null;
             }
 
             public object Invoke(object[] args)
