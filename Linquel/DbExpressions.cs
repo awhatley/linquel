@@ -12,7 +12,8 @@ namespace Sample {
         Table = 1000, // make sure these don't overlap with ExpressionType
         Column,
         Select,
-        Projection
+        Projection,
+        Join
     }
 
     internal static class DbExpressionExtensions {
@@ -102,6 +103,38 @@ namespace Sample {
         }
     }
 
+    internal enum JoinType {
+        CrossJoin,
+        InnerJoin,
+        CrossApply,
+    }
+
+    internal class JoinExpression : Expression {
+        JoinType joinType;
+        Expression left;
+        Expression right;
+        Expression condition;
+        internal JoinExpression(Type type, JoinType joinType, Expression left, Expression right, Expression condition)
+            : base((ExpressionType)DbExpressionType.Join, type) {
+            this.joinType = joinType;
+            this.left = left;
+            this.right = right;
+            this.condition = condition;
+        }
+        internal JoinType Join {
+            get { return this.joinType; }
+        }
+        internal Expression Left {
+            get { return this.left; }
+        }
+        internal Expression Right {
+            get { return this.right; }
+        }
+        internal new Expression Condition {
+            get { return this.condition; }
+        }
+    }
+
     internal class ProjectionExpression : Expression {
         SelectExpression source;
         Expression projector;
@@ -130,6 +163,8 @@ namespace Sample {
                     return this.VisitColumn((ColumnExpression)exp);
                 case DbExpressionType.Select:
                     return this.VisitSelect((SelectExpression)exp);
+                case DbExpressionType.Join:
+                    return this.VisitJoin((JoinExpression)exp);
                 case DbExpressionType.Projection:
                     return this.VisitProjection((ProjectionExpression)exp);
                 default:
@@ -150,6 +185,15 @@ namespace Sample {
                 return new SelectExpression(select.Type, select.Alias, columns, from, where);
             }
             return select;
+        }
+        protected virtual Expression VisitJoin(JoinExpression join) {
+            Expression left = this.Visit(join.Left);
+            Expression right = this.Visit(join.Right);
+            Expression condition = this.Visit(join.Condition);
+            if (left != join.Left || right != join.Right || condition != join.Condition) {
+                return new JoinExpression(join.Type, join.Join, left, right, condition);
+            }
+            return join;
         }
         protected virtual Expression VisitSource(Expression source) {
             return this.Visit(source);

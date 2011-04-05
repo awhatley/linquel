@@ -61,12 +61,18 @@ namespace Sample {
         private TranslateResult Translate(Expression expression) {
             ProjectionExpression projection = expression as ProjectionExpression;
             if (projection == null) {
-                expression = Evaluator.PartialEval(expression);
-                projection = (ProjectionExpression)new QueryBinder().Bind(expression);
+                expression = Evaluator.PartialEval(expression, CanBeEvaluatedLocally);
+                projection = (ProjectionExpression)new QueryBinder(this).Bind(expression);
             }
             string commandText = new QueryFormatter().Format(projection.Source);
             LambdaExpression projector = new ProjectionBuilder().Build(projection.Projector, projection.Source.Alias);
             return new TranslateResult { CommandText = commandText, Projector = projector };
         }
+
+        private static bool CanBeEvaluatedLocally(Expression expression) {
+            return expression.NodeType != ExpressionType.Parameter &&
+                   expression.NodeType != ExpressionType.Lambda;
+        }
+
     } 
 }

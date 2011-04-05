@@ -11,8 +11,10 @@ namespace Sample {
         ColumnProjector columnProjector;
         Dictionary<ParameterExpression, Expression> map;
         int aliasCount;
+        IQueryProvider provider;
 
-        internal QueryBinder() {
+        internal QueryBinder(IQueryProvider provider) {
+            this.provider = provider;
             this.columnProjector = new ColumnProjector(this.CanBeColumn);
         }
 
@@ -36,8 +38,8 @@ namespace Sample {
             return "t" + (aliasCount++);
         }
 
-        private ProjectedColumns ProjectColumns(Expression expression, string newAlias, string existingAlias) {
-            return this.columnProjector.ProjectColumns(expression, newAlias, existingAlias);
+        private ProjectedColumns ProjectColumns(Expression expression, string newAlias, params string[] existingAliases) {
+            return this.columnProjector.ProjectColumns(expression, newAlias, existingAliases);
         }
 
         protected override Expression VisitMethodCall(MethodCallExpression m) {
@@ -48,6 +50,29 @@ namespace Sample {
                         return this.BindWhere(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]));
                     case "Select":
                         return this.BindSelect(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]));
+                    case "SelectMany":
+                        if (m.Arguments.Count == 2) {
+                            return this.BindSelectMany(
+                                m.Type, m.Arguments[0], 
+                                (LambdaExpression)StripQuotes(m.Arguments[1]),
+                                null
+                                );
+                        }
+                        else if (m.Arguments.Count == 3) {
+                            return this.BindSelectMany(
+                                m.Type, m.Arguments[0], 
+                                (LambdaExpression)StripQuotes(m.Arguments[1]), 
+                                (LambdaExpression)StripQuotes(m.Arguments[2])
+                                );
+                        }
+                        break;
+                    case "Join":
+                        return this.BindJoin(
+                            m.Type, m.Arguments[0], m.Arguments[1],
+                            (LambdaExpression)StripQuotes(m.Arguments[2]),
+                            (LambdaExpression)StripQuotes(m.Arguments[3]),
+                            (LambdaExpression)StripQuotes(m.Arguments[4])
+                            );
                 }
             }
             return base.VisitMethodCall(m);
@@ -58,7 +83,7 @@ namespace Sample {
             this.map[predicate.Parameters[0]] = projection.Projector;
             Expression where = this.Visit(predicate.Body);
             string alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, GetExistingAlias(projection.Source));
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
             return new ProjectionExpression(
                 new SelectExpression(resultType, alias, pc.Columns, projection.Source, where),
                 pc.Projector
@@ -70,27 +95,63 @@ namespace Sample {
             this.map[selector.Parameters[0]] = projection.Projector;
             Expression expression = this.Visit(selector.Body);
             string alias = this.GetNextAlias();
-            ProjectedColumns pc = this.ProjectColumns(expression, alias, GetExistingAlias(projection.Source));
+            ProjectedColumns pc = this.ProjectColumns(expression, alias, projection.Source.Alias);
             return new ProjectionExpression(
                 new SelectExpression(resultType, alias, pc.Columns, projection.Source, null),
                 pc.Projector
                 );
         }
 
-        private static string GetExistingAlias(Expression source) {
-            switch ((DbExpressionType)source.NodeType) {
-                case DbExpressionType.Select:
-                    return ((SelectExpression)source).Alias;
-                case DbExpressionType.Table:
-                    return ((TableExpression)source).Alias;
-                default:
-                    throw new InvalidOperationException(string.Format("Invalid source node type '{0}'", source.NodeType));
+        protected virtual Expression BindSelectMany(Type resultType, Expression source, LambdaExpression collectionSelector, LambdaExpression resultSelector) {
+            ProjectionExpression projection = (ProjectionExpression)this.Visit(source);
+            this.map[collectionSelector.Parameters[0]] = projection.Projector;
+            ProjectionExpression collectionProjection = (ProjectionExpression)this.Visit(collectionSelector.Body);
+            JoinType joinType = IsTable(collectionSelector.Body) ? JoinType.CrossJoin : JoinType.CrossApply;
+            JoinExpression join = new JoinExpression(resultType, joinType, projection.Source, collectionProjection.Source, null);
+            string alias = this.GetNextAlias();
+            ProjectedColumns pc;
+            if (resultSelector == null) {
+                pc = this.ProjectColumns(collectionProjection.Projector, alias, projection.Source.Alias, collectionProjection.Source.Alias);
             }
+            else {
+                this.map[resultSelector.Parameters[0]] = projection.Projector;
+                this.map[resultSelector.Parameters[1]] = collectionProjection.Projector;
+                Expression result = this.Visit(resultSelector.Body);
+                pc = this.ProjectColumns(result, alias, projection.Source.Alias, collectionProjection.Source.Alias);
+            }
+            return new ProjectionExpression(
+                new SelectExpression(resultType, alias, pc.Columns, join, null),
+                pc.Projector
+                );
+        }
+
+        protected virtual Expression BindJoin(Type resultType, Expression outerSource, Expression innerSource, LambdaExpression outerKey, LambdaExpression innerKey, LambdaExpression resultSelector) {
+            ProjectionExpression outerProjection = (ProjectionExpression)this.Visit(outerSource);
+            ProjectionExpression innerProjection = (ProjectionExpression)this.Visit(innerSource);
+            this.map[outerKey.Parameters[0]] = outerProjection.Projector;
+            Expression outerKeyExpr = this.Visit(outerKey.Body);
+            this.map[innerKey.Parameters[0]] = innerProjection.Projector;
+            Expression innerKeyExpr = this.Visit(innerKey.Body);
+            this.map[resultSelector.Parameters[0]] = outerProjection.Projector;
+            this.map[resultSelector.Parameters[1]] = innerProjection.Projector;
+            Expression resultExpr = this.Visit(resultSelector.Body);
+            JoinExpression join = new JoinExpression(resultType, JoinType.InnerJoin, outerProjection.Source, innerProjection.Source, Expression.Equal(outerKeyExpr, innerKeyExpr));
+            string alias = this.GetNextAlias();
+            ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, outerProjection.Source.Alias, innerProjection.Source.Alias);
+            return new ProjectionExpression(
+                new SelectExpression(resultType, alias, pc.Columns, join, null),
+                pc.Projector
+                );
+        }
+
+        private bool IsTable(Expression expression) {
+            ConstantExpression c = expression as ConstantExpression;
+            return c != null && IsTable(c.Value);
         }
 
         private bool IsTable(object value) {
             IQueryable q = value as IQueryable;
-            return q != null && q.Expression.NodeType == ExpressionType.Constant;
+            return q != null && q.Provider == this.provider && q.Expression.NodeType == ExpressionType.Constant;
         }
 
         private string GetTableName(object table) {

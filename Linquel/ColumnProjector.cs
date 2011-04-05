@@ -28,7 +28,7 @@ namespace Sample {
         List<ColumnDeclaration> columns;
         HashSet<string> columnNames;
         HashSet<Expression> candidates;
-        string existingAlias;
+        string[] existingAliases;
         string newAlias;
         int iColumn;
 
@@ -36,12 +36,12 @@ namespace Sample {
             this.nominator = new Nominator(fnCanBeColumn);
         }
 
-        internal ProjectedColumns ProjectColumns(Expression expression, string newAlias, string existingAlias) {
+        internal ProjectedColumns ProjectColumns(Expression expression, string newAlias, params string[] existingAliases) {
             this.map = new Dictionary<ColumnExpression, ColumnExpression>();
             this.columns = new List<ColumnDeclaration>();
             this.columnNames = new HashSet<string>();
             this.newAlias = newAlias;
-            this.existingAlias = existingAlias;
+            this.existingAliases = existingAliases;
             this.candidates = this.nominator.Nominate(expression);
             return new ProjectedColumns(this.Visit(expression), this.columns.AsReadOnly());
         }
@@ -54,7 +54,7 @@ namespace Sample {
                     if (this.map.TryGetValue(column, out mapped)) {
                         return mapped;
                     }
-                    if (this.existingAlias == column.Alias) {
+                    if (this.existingAliases.Contains(column.Alias)) {
                         int ordinal = this.columns.Count;
                         string columnName = this.GetUniqueColumnName(column.Name);
                         this.columns.Add(new ColumnDeclaration(columnName, column));

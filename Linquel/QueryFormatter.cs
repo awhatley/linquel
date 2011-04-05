@@ -20,23 +20,23 @@ namespace Sample {
             return this.sb.ToString();
         }
 
-        protected enum Identation {
+        protected enum Indentation {
             Same,
             Inner,
             Outer
         }
 
-        internal int IdentationWidth {
+        internal int IndentationWidth {
             get { return this.indent; }
             set { this.indent = value; }
         }
 
-        private void AppendNewLine(Identation style) {
+        private void AppendNewLine(Indentation style) {
             sb.AppendLine();
-            if (style == Identation.Inner) {
+            if (style == Indentation.Inner) {
                 this.depth++;
             }
-            else if (style == Identation.Outer) {
+            else if (style == Indentation.Outer) {
                 this.depth--;
                 System.Diagnostics.Debug.Assert(this.depth >= 0);
             }
@@ -69,7 +69,7 @@ namespace Sample {
                     sb.Append(" AND ");
                     break;
                 case ExpressionType.Or:
-                    sb.Append(" OR");
+                    sb.Append(" OR ");
                     break;
                 case ExpressionType.Equal:
                     sb.Append(" = ");
@@ -144,12 +144,12 @@ namespace Sample {
                 }
             }
             if (select.From != null) {
-                this.AppendNewLine(Identation.Same);
+                this.AppendNewLine(Indentation.Same);
                 sb.Append("FROM ");
                 this.VisitSource(select.From);
             }
             if (select.Where != null) {
-                this.AppendNewLine(Identation.Same);
+                this.AppendNewLine(Indentation.Same);
                 sb.Append("WHERE ");
                 this.Visit(select.Where);
             }
@@ -167,17 +167,44 @@ namespace Sample {
                 case DbExpressionType.Select:
                     SelectExpression select = (SelectExpression)source;
                     sb.Append("(");
-                    this.AppendNewLine(Identation.Inner);
+                    this.AppendNewLine(Indentation.Inner);
                     this.Visit(select);
-                    this.AppendNewLine(Identation.Outer);
+                    this.AppendNewLine(Indentation.Outer);
                     sb.Append(")");
                     sb.Append(" AS ");
                     sb.Append(select.Alias);
+                    break;
+                case DbExpressionType.Join:
+                    this.VisitJoin((JoinExpression)source);
                     break;
                 default:
                     throw new InvalidOperationException("Select source is not valid type");
             }
             return source;
+        }
+
+        protected override Expression VisitJoin(JoinExpression join) {
+            this.VisitSource(join.Left);
+            this.AppendNewLine(Indentation.Same);
+            switch (join.Join) {
+                case JoinType.CrossJoin:
+                    sb.Append("CROSS JOIN ");
+                    break;
+                case JoinType.InnerJoin:
+                    sb.Append("INNER JOIN ");
+                    break;
+                case JoinType.CrossApply:
+                    sb.Append("CROSS APPLY ");
+                    break;
+            }
+            this.VisitSource(join.Right);
+            if (join.Condition != null) {
+                this.AppendNewLine(Indentation.Inner);
+                sb.Append("ON ");
+                this.Visit(join.Condition);
+                this.AppendNewLine(Indentation.Outer);
+            }
+            return join;
         }
     }
 }

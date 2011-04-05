@@ -48,22 +48,21 @@ namespace Sample {
                 con.Open();
                 Northwind db = new Northwind(con);
 
-                string city = "London";
+                // join
                 var query = from c in db.Customers
-                            where c.City == city
-                            select new {
-                                Name = c.ContactName,
-                                Orders = from o in db.Orders
-                                         where o.CustomerID == c.CustomerID
-                                         select o
-                            };
+                            join o in db.Orders on c.CustomerID equals o.CustomerID
+                            select new { c.ContactName, o.OrderDate };
 
+                // nested from's (SelectMany)
+                //var query = from c in db.Customers
+                //            from o in db.Orders
+                //            where c.CustomerID == o.CustomerID
+                //            select new { c.ContactName, o.OrderDate };
+
+                Console.WriteLine(query);
 
                 foreach (var item in query) {
-                    Console.WriteLine("{0}", item.Name);
-                    foreach (var ord in item.Orders) {
-                        Console.WriteLine("\tOrder: {0}", ord.OrderID);
-                    }
+                    Console.WriteLine(item);
                 }
 
                 Console.ReadLine();
