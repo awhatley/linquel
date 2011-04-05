@@ -15,7 +15,7 @@ namespace Test
 {
     using IQToolkit;
     using IQToolkit.Data;
-    using IQToolkit.Data.SqlClient;
+    using IQToolkit.Data.Mapping;
 
     public class MultiTableEntity
     {
@@ -27,18 +27,16 @@ namespace Test
 
     public class MultiTableContext
     {
-        private TableDispenser dispenser;
+        private IEntityProvider provider;
 
-        public static QueryMapping StandardMapping = new AttributeMapping(new TSqlLanguage(), typeof(MultiTableContext));
-
-        public MultiTableContext(IQueryProvider provider)
+        public MultiTableContext(IEntityProvider provider)
         {
-            this.dispenser = new TableDispenser(provider);
+            this.provider = provider;
         }
 
-        public IQueryProvider Provider
+        public IEntityProvider Provider
         {
-            get { return this.dispenser.Provider; }
+            get { return this.provider; }
         }
 
         [Table(Name = "TestTable1", Alias = "TT1")]
@@ -50,7 +48,7 @@ namespace Test
         [Column(Member = "Value3", Alias = "TT3")]
         public IUpdatable<MultiTableEntity> MultiTableEntities
         {
-            get { return this.dispenser.GetUpdatableTable<MultiTableEntity>("MultiTableEntities"); }
+            get { return this.provider.GetTable<MultiTableEntity>("MultiTableEntities"); }
         }
     }
 }

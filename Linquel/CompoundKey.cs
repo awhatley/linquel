@@ -2,11 +2,12 @@
 // This source code is made available under the terms of the Microsoft Public License (MS-PL)
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace IQToolkit
 {
-    public class CompoundKey : IEquatable<CompoundKey>
+    public class CompoundKey : IEquatable<CompoundKey>, IEnumerable<object>, IEnumerable
     {
         object[] values;
         int hc;
@@ -44,6 +45,16 @@ namespace IQToolkit
                     return false;
             }
             return true;
+        }
+
+        public IEnumerator<object> GetEnumerator()
+        {
+            return ((IEnumerable<object>)values).GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return this.GetEnumerator();
         }
     }
 }

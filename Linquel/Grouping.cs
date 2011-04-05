@@ -31,6 +31,8 @@ namespace IQToolkit
 
         public IEnumerator<TElement> GetEnumerator()
         {
+            if (!(group is List<TElement>))
+                group = group.ToList();
             return this.group.GetEnumerator();
         }
 

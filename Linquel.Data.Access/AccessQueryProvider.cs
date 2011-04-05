@@ -16,6 +16,7 @@ using System.Text;
 
 namespace IQToolkit.Data.Access
 {
+    using IQToolkit.Data.Common;
     using IQToolkit.Data.OleDb;
 
     public class AccessQueryProvider : OleDb.OleDbQueryProvider
@@ -23,36 +24,38 @@ namespace IQToolkit.Data.Access
         Dictionary<QueryCommand, OleDbCommand> commandCache = new Dictionary<QueryCommand, OleDbCommand>();
 
         public AccessQueryProvider(OleDbConnection connection, QueryMapping mapping)
-            : base(connection, mapping, QueryPolicy.Default, null)
+            : base(connection, mapping, QueryPolicy.Default)
         {
         }
 
-        public AccessQueryProvider(OleDbConnection connection, QueryMapping mapping, TextWriter log)
-            : base(connection, mapping, QueryPolicy.Default, log)
+        public AccessQueryProvider(OleDbConnection connection, QueryMapping mapping, QueryPolicy policy)
+            : base(connection, mapping, policy)
         {
         }
 
-        public AccessQueryProvider(OleDbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
-            : base(connection, mapping, policy, log)
+        public override DbEntityProvider New(DbConnection connection, QueryMapping mapping, QueryPolicy policy)
         {
+            return new AccessQueryProvider((OleDbConnection)connection, mapping, policy);
         }
 
-        public override DbQueryProvider Create(DbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
+        public static string GetConnectionString(string databaseFile) 
         {
-            return new AccessQueryProvider((OleDbConnection)connection, mapping, policy, log);
+            string dbLower = databaseFile.ToLower();
+            if (dbLower.Contains(".mdb"))
+            {
+                return GetConnectionString(AccessOleDbProvider2000, databaseFile);
+            }
+            else if (dbLower.Contains(".accdb"))
+            {
+                return GetConnectionString(AccessOleDbProvider2007, databaseFile);
+            }
+            else
+            {
+                throw new InvalidOperationException(string.Format("Unrecognized file extension on database file '{0}'", databaseFile));
+            }
         }
 
-        public static string GetAccess2000ConnectionString(string databaseFile) 
-        {
-            return GetConnectionString(AccessOleDbProvider2000, databaseFile);
-        }
-
-        public static string GetAccess2007ConnectionString(string databaseFile)
-        {
-            return GetConnectionString(AccessOleDbProvider2007, databaseFile);
-        }
-
-        public static string GetConnectionString(string provider, string databaseFile)
+        private static string GetConnectionString(string provider, string databaseFile)
         {
             return string.Format("Provider={0};ole db services=0;Data Source={1}", provider, databaseFile);
         }
@@ -70,10 +73,17 @@ namespace IQToolkit.Data.Access
                 this.SetParameterValues(query, cmd, paramValues);
                 cmd.Prepare();
                 this.commandCache.Add(query, cmd);
+                if (this.Transaction != null)
+                {
+                    cmd = (OleDbCommand)cmd.Clone();
+                    cmd.Transaction = (OleDbTransaction)this.Transaction;
+                }
             }
             else
             {
                 cmd = (OleDbCommand)cmd.Clone();
+                if (this.Transaction != null)
+                    cmd.Transaction = (OleDbTransaction)this.Transaction;
                 this.SetParameterValues(query, cmd, paramValues);
             }
             return cmd;

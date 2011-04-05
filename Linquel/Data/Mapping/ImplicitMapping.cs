@@ -10,8 +10,10 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQToolkit.Data
+namespace IQToolkit.Data.Mapping
 {
+    using Common;
+
     /// <summary>
     /// A simple query mapping that attempts to infer mapping from naming conventions
     /// </summary>
@@ -22,13 +24,12 @@ namespace IQToolkit.Data
         {
         }
 
-        public override MappingEntity GetEntity(Type type)
+        public override string GetTableId(Type type)
         {
-            string tableName = this.InferTableName(type);
-            return this.GetEntity(type, tableName, type);
+            return this.InferTableName(type);
         }
 
-        protected override bool IsPrimaryKey(MappingEntity entity, MemberInfo member)
+        public override bool IsPrimaryKey(MappingEntity entity, MemberInfo member)
         {
             // Customers has CustomerID, Orders has OrderID, etc
             if (this.IsColumn(entity, member)) 
@@ -59,6 +60,37 @@ namespace IQToolkit.Data
             {
                 Type otherType = TypeHelper.GetElementType(TypeHelper.GetMemberType(member));
                 return !this.Language.IsScalar(otherType);
+            }
+            return false;
+        }
+
+        protected override bool IsRelationshipSource(MappingEntity entity, MemberInfo member)
+        {
+            if (IsAssociationRelationship(entity, member))
+            {
+                if (typeof(IEnumerable).IsAssignableFrom(TypeHelper.GetMemberType(member)))
+                    return false;
+
+                // is source of relationship if relatedKeyMembers are the related entity's primary keys
+                MappingEntity entity2 = GetRelatedEntity(entity, member);
+                var relatedPKs = new HashSet<string>(this.GetPrimaryKeyMembers(entity2).Select(m => m.Name));
+                var relatedKeyMembers = new HashSet<string>(this.GetAssociationRelatedKeyMembers(entity, member).Select(m => m.Name));
+                return relatedPKs.IsSubsetOf(relatedKeyMembers) && relatedKeyMembers.IsSubsetOf(relatedPKs);
+            }
+            return false;
+        }
+
+        protected override bool IsRelationshipTarget(MappingEntity entity, MemberInfo member)
+        {
+            if (IsAssociationRelationship(entity, member))
+            {
+                if (typeof(IEnumerable).IsAssignableFrom(TypeHelper.GetMemberType(member)))
+                    return true;
+
+                // is target of relationship if the assoctions keys are the same as this entities primary key
+                var pks = new HashSet<string>(this.GetPrimaryKeyMembers(entity).Select(m => m.Name));
+                var keys = new HashSet<string>(this.GetAssociationKeyMembers(entity, member).Select(m => m.Name));
+                return keys.IsSubsetOf(pks) && pks.IsSubsetOf(keys);
             }
             return false;
         }
@@ -98,7 +130,7 @@ namespace IQToolkit.Data
 
         protected override string GetTableName(MappingEntity entity)
         {
-            return !string.IsNullOrEmpty(entity.EntityID) ? entity.EntityID : this.InferTableName(entity.EntityType);
+            return !string.IsNullOrEmpty(entity.TableId) ? entity.TableId : this.InferTableName(entity.EntityType);
         }
 
         private string InferTableName(Type rowType)

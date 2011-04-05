@@ -15,7 +15,7 @@ namespace Test
 {
     using IQToolkit;
     using IQToolkit.Data;
-    using IQToolkit.Data.SqlClient;
+    using IQToolkit.Data.Mapping;
 
     public class Customer
     {
@@ -53,18 +53,12 @@ namespace Test
     {
         public int ID;
         public string ProductName;
-        public YesNo Discontinued;
+        public bool Discontinued;
 
         int IEntity.ID
         {
             get { return this.ID; }
         }
-    }
-
-    public enum YesNo
-    {
-        No,
-        Yes
     }
 
     public class Employee
@@ -94,18 +88,49 @@ namespace Test
 
     public class Northwind
     {
-        private TableDispenser dispenser;
+        private IEntityProvider provider;
 
-        public static QueryMapping StandardMapping = new AttributeMapping(TSqlLanguage.Default, typeof(Northwind));
-
-        public Northwind(IQueryProvider provider)
+        public Northwind(IEntityProvider provider)
         {
-            this.dispenser = new TableDispenser(provider);
+            this.provider = provider;
         }
 
-        public IQueryProvider Provider
+        public IEntityProvider Provider
         {
-            get { return this.dispenser.Provider; }
+            get { return this.provider; }
+        }
+
+        public virtual IEntityTable<Customer> Customers
+        {
+            get { return this.provider.GetTable<Customer>("Customers"); }
+        }
+
+        public virtual IEntityTable<Order> Orders
+        {
+            get { return this.provider.GetTable<Order>("Orders"); }
+        }
+
+        public virtual IEntityTable<OrderDetail> OrderDetails
+        {
+            get { return this.provider.GetTable<OrderDetail>("OrderDetails"); }
+        }
+
+        public virtual IEntityTable<Product> Products
+        {
+            get { return this.provider.GetTable<Product>("Products"); }
+        }
+
+        public virtual IEntityTable<Employee> Employees
+        {
+            get { return this.provider.GetTable<Employee>("Employees"); }
+        }
+    }
+
+    public class NorthwindWithAttributes : Northwind
+    {
+        public NorthwindWithAttributes(IEntityProvider provider)
+            : base(provider)
+        {
         }
 
         [Table]
@@ -116,9 +141,9 @@ namespace Test
         [Column(Member = "City", DbType="NVARCHAR(20)")]
         [Column(Member = "Country")]
         [Association(Member = "Orders", KeyMembers = "CustomerID", RelatedEntityID = "Orders", RelatedKeyMembers = "CustomerID")]
-        public IUpdatableTable<Customer> Customers
+        public override IEntityTable<Customer> Customers
         {
-            get { return this.dispenser.GetUpdatableTable<Customer>("Customers"); }
+            get { return base.Customers; }
         }
         
         [Table]
@@ -127,27 +152,27 @@ namespace Test
         [Column(Member = "OrderDate")]
         [Association(Member = "Customer", KeyMembers = "CustomerID", RelatedEntityID = "Customers", RelatedKeyMembers = "CustomerID")]
         [Association(Member = "Details", KeyMembers = "OrderID", RelatedEntityID = "OrderDetails", RelatedKeyMembers = "OrderID")]
-        public IUpdatableTable<Order> Orders
+        public override IEntityTable<Order> Orders
         {
-            get { return this.dispenser.GetUpdatableTable<Order>("Orders"); }
+            get { return base.Orders; }
         }
 
         [Table(Name = "Order Details")]
         [Column(Member = "OrderID", IsPrimaryKey = true)]
         [Column(Member = "ProductID", IsPrimaryKey = true)]
         [Association(Member = "Product", KeyMembers = "ProductID", RelatedEntityID = "Products", RelatedKeyMembers = "ProductID")]
-        public IUpdatableTable<OrderDetail> OrderDetails
+        public override IEntityTable<OrderDetail> OrderDetails
         {
-            get { return this.dispenser.GetUpdatableTable<OrderDetail>("OrderDetails"); }
+            get { return base.OrderDetails; }
         }
 
         [Table]
         [Column(Member = "Id", Name="ProductId", IsPrimaryKey = true)]
         [Column(Member = "ProductName")]
         [Column(Member = "Discontinued")]
-        public IUpdatableTable<Product> Products
+        public override IEntityTable<Product> Products
         {
-            get { return this.dispenser.GetUpdatableTable<Product>("Products"); }
+            get { return base.Products; }
         }
 
         [Table]
@@ -159,39 +184,71 @@ namespace Test
         [Column(Member = "Address.City")]
         [Column(Member = "Address.Region")]
         [Column(Member = "Address.PostalCode")]
-        public IUpdatable<Employee> Employees
+        public override IEntityTable<Employee> Employees
         {
-            get { return this.dispenser.GetUpdatableTable<Employee>("Employees"); }
+            get { return base.Employees; }
         }
     }
 
-    public class NorthwindNoAttributes
+    public class MySqlNorthwind : NorthwindWithAttributes
     {
-        private TableDispenser dispenser;
-
-        public NorthwindNoAttributes(IQueryProvider provider)
+        public MySqlNorthwind(IEntityProvider provider)
+            : base(provider)
         {
-            this.dispenser = new TableDispenser(provider);
         }
 
-        public IQueryProvider Provider
+        [Table(Name = "Order_Details")]
+        public override IEntityTable<OrderDetail> OrderDetails
         {
-            get { return this.dispenser.Provider; }
+            get { return base.OrderDetails; }
+        }
+    }
+
+    public interface INorthwindSession
+    {
+        void SubmitChanges();
+        ISessionTable<Customer> Customers { get; }
+        ISessionTable<Order> Orders { get; }
+        ISessionTable<OrderDetail> OrderDetails { get; }
+    }
+
+    public class NorthwindSession : INorthwindSession
+    {
+        IEntitySession session;
+
+        public NorthwindSession(DbEntityProvider provider)
+            : this(new DbEntitySession(provider))
+        {
         }
 
-        public IUpdatableTable<Customer> Customers
+        public NorthwindSession(IEntitySession session)
         {
-            get { return this.dispenser.GetUpdatableTable<Customer>("Customers"); }
+            this.session = session;
         }
 
-        public IUpdatableTable<Order> Orders
+        public IEntitySession Session
         {
-            get { return this.dispenser.GetUpdatableTable<Order>("Orders"); }
+            get { return this.session; }
         }
 
-        public IUpdatableTable<OrderDetail> OrderDetails
+        public void SubmitChanges()
         {
-            get { return this.dispenser.GetUpdatableTable<OrderDetail>("OrderDetails"); }
+            this.session.SubmitChanges();
+        }
+
+        public ISessionTable<Customer> Customers
+        {
+            get { return this.session.GetTable<Customer>("Customers"); }
+        }
+
+        public ISessionTable<Order> Orders
+        {
+            get { return this.session.GetTable<Order>("Orders"); }
+        }
+
+        public ISessionTable<OrderDetail> OrderDetails
+        {
+            get { return this.session.GetTable<OrderDetail>("OrderDetails"); }
         }
     }
 }

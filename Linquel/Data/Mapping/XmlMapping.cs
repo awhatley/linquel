@@ -12,8 +12,10 @@ using System.Text;
 using System.Threading;
 using System.Xml.Linq;
 
-namespace IQToolkit.Data
+namespace IQToolkit.Data.Mapping
 {
+    using Common;
+
     public class XmlMapping : AttributeMapping
     {
         Dictionary<string, XElement> entities;

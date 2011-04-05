@@ -109,6 +109,11 @@ namespace IQToolkit
                 return nominator.candidates;
             }
 
+            protected override Expression VisitConstant(ConstantExpression c)
+            {
+                return base.VisitConstant(c);
+            }
+
             protected override Expression Visit(Expression expression)
             {
                 if (expression != null)

@@ -17,14 +17,14 @@ namespace Test
         protected void RunTests(Northwind db, string baselineFile, string newBaselineFile, bool executeQueries)
         {
             this.db = db;
-            DbQueryProvider provider = (DbQueryProvider)db.Provider;
+            DbEntityProvider provider = (DbEntityProvider)db.Provider;
             base.RunTests(provider, baselineFile, newBaselineFile, executeQueries);
         }
 
         protected void RunTest(Northwind db, string baselineFile, bool executeQueries, string testName)
         {
             this.db = db;
-            DbQueryProvider provider = (DbQueryProvider)db.Provider;
+            DbEntityProvider provider = (DbEntityProvider)db.Provider;
             base.RunTest(provider, baselineFile, executeQueries, testName);
         }
     }

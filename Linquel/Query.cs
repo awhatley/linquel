@@ -31,7 +31,7 @@ namespace IQToolkit
         {
             if (provider == null)
             {
-                throw new ArgumentNullException("provider");
+                throw new ArgumentNullException("Provider");
             }
             this.provider = provider;
             this.expression = Expression.Constant(this);
@@ -41,7 +41,7 @@ namespace IQToolkit
         {
             if (provider == null)
             {
-                throw new ArgumentNullException("provider");
+                throw new ArgumentNullException("Provider");
             }
             if (expression == null)
             {

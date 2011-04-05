@@ -10,6 +10,8 @@ using System.Text;
 
 namespace IQToolkit.Data.Access
 {
+    using IQToolkit.Data.Common;
+
     /// <summary>
     /// Formats a query expression into MS Access query syntax
     /// </summary>
@@ -268,14 +270,14 @@ namespace IQToolkit.Data.Access
                         return m;
                     case "IndexOf":
                         this.Write("(InStr(");
+                        if (m.Arguments.Count == 2 && m.Arguments[1].Type == typeof(int))
+                        {
+                            this.Visit(m.Arguments[1]);
+                            this.Write(" + 1, ");
+                        }
                         this.Visit(m.Object);
                         this.Write(", ");
                         this.Visit(m.Arguments[0]);
-                        if (m.Arguments.Count == 2 && m.Arguments[1].Type == typeof(int))
-                        {
-                            this.Write(", ");
-                            this.Visit(m.Arguments[1]);
-                        }
                         this.Write(") - 1)");
                         return m;
                     case "Trim":
@@ -309,7 +311,6 @@ namespace IQToolkit.Data.Access
                         this.Write("");
                         return m;
                     case "Truncate":
-                    case "Floor":
                         this.Write("Fix");
                         this.Write("(");
                         this.Visit(m.Arguments[0]);
@@ -318,7 +319,7 @@ namespace IQToolkit.Data.Access
                     case "Round":
                         if (m.Arguments.Count == 1)
                         {
-                            this.Write("Rnd(");
+                            this.Write("Round(");
                             this.Visit(m.Arguments[0]);
                             this.Write(")");
                             return m;
@@ -372,13 +373,12 @@ namespace IQToolkit.Data.Access
                     case "Round":
                         if (m.Arguments.Count == 1)
                         {
-                            this.Write("Rnd(");
+                            this.Write("Round(");
                             this.Visit(m.Arguments[0]);
                             this.Write(")");
                             return m;
                         }
                         break;
-                    case "Floor":
                     case "Truncate":
                         this.Write("Fix(");
                         this.Visit(m.Arguments[0]);
@@ -400,6 +400,32 @@ namespace IQToolkit.Data.Access
                 }
                 return m;
             }
+            else if (!m.Method.IsStatic && m.Method.Name == "CompareTo" && m.Method.ReturnType == typeof(int) && m.Arguments.Count == 1)
+            {
+                this.Write("IIF(");
+                this.Visit(m.Object);
+                this.Write(" = ");
+                this.Visit(m.Arguments[0]);
+                this.Write(", 0, IIF(");
+                this.Visit(m.Object);
+                this.Write(" < ");
+                this.Visit(m.Arguments[0]);
+                this.Write(", -1, 1))");
+                return m;
+            }
+            else if (m.Method.IsStatic && m.Method.Name == "Compare" && m.Method.ReturnType == typeof(int) && m.Arguments.Count == 2)
+            {
+                this.Write("IIF(");
+                this.Visit(m.Arguments[0]);
+                this.Write(" = ");
+                this.Visit(m.Arguments[1]);
+                this.Write(", 0, IIF(");
+                this.Visit(m.Arguments[0]);
+                this.Write(" < ");
+                this.Visit(m.Arguments[1]);
+                this.Write(", -1, 1))");
+                return m;
+            }
             return base.VisitMethodCall(m);
         }
 
@@ -409,30 +435,30 @@ namespace IQToolkit.Data.Access
             {
                 if (nex.Arguments.Count == 3)
                 {
-                    this.Write("DATEADD('y', ");
+                    this.Write("CDate(");
                     this.Visit(nex.Arguments[0]);
-                    this.Write(", DATEADD('m', ");
+                    this.Write(" & '/' & ");
                     this.Visit(nex.Arguments[1]);
-                    this.Write(", DATEADD('d', ");
+                    this.Write(" & '/' & ");
                     this.Visit(nex.Arguments[2]);
-                    this.Write(", CDate(0))))");
+                    this.Write(")");
                     return nex;
                 }
                 else if (nex.Arguments.Count == 6)
                 {
-                    this.Write("DATEADD('y', ");
+                    this.Write("CDate(");
                     this.Visit(nex.Arguments[0]);
-                    this.Write(", DATEADD('m', ");
+                    this.Write(" & '/' & ");
                     this.Visit(nex.Arguments[1]);
-                    this.Write(", DATEADD('d', ");
+                    this.Write(" & '/' & ");
                     this.Visit(nex.Arguments[2]);
-                    this.Write(", DATEADD('h', ");
+                    this.Write(" & ' ' & ");
                     this.Visit(nex.Arguments[3]);
-                    this.Write(", DATEADD('m', ");
+                    this.Write(" & ':' & ");
                     this.Visit(nex.Arguments[4]);
-                    this.Write(", DATEADD('s', ");
+                    this.Write(" & + ':' & ");
                     this.Visit(nex.Arguments[5]);
-                    this.Write(", CDate(0)))))))");
+                    this.Write(")");
                     return nex;
                 }
             }
@@ -499,13 +525,25 @@ namespace IQToolkit.Data.Access
             switch (b.NodeType)
             {
                 case ExpressionType.And:
+                    if (b.Type == typeof(bool) || b.Type == typeof(bool?))
+                        return "AND";
+                    return "BAND";
                 case ExpressionType.AndAlso:
                     return "AND";
                 case ExpressionType.Or:
+                    if (b.Type == typeof(bool) || b.Type == typeof(bool?))
+                        return "OR";
+                    return "BOR";
                 case ExpressionType.OrElse:
                     return "OR";
                 case ExpressionType.Modulo:
                     return "MOD";
+                case ExpressionType.ExclusiveOr:
+                    return "XOR";
+                case ExpressionType.Divide:
+                    if (this.IsInteger(b.Type))
+                        return "\\"; // integer divide
+                    goto default;
                 default:
                     return base.GetOperator(b);
             }

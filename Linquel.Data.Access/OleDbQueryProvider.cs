@@ -10,10 +10,12 @@ using System.IO;
 
 namespace IQToolkit.Data.OleDb
 {
-    public class OleDbQueryProvider : DbQueryProvider
+    using IQToolkit.Data.Common;
+
+    public class OleDbQueryProvider : DbEntityProvider
     {
-        public OleDbQueryProvider(OleDbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
-            : base(connection, mapping, policy, log)
+        public OleDbQueryProvider(OleDbConnection connection, QueryMapping mapping, QueryPolicy policy)
+            : base(connection, mapping, policy)
         {
         }
 

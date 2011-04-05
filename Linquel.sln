@@ -16,6 +16,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Linquel.Data.SqlClient", "L
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Linquel.Data.SqlServerCe", "Linquel.Data.SqlServerCe\Linquel.Data.SqlServerCe.csproj", "{2D916130-2B32-4AE9-8012-D5A1079368A7}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Linquel.Data.MySql", "Linquel.Data.MySql\Linquel.Data.MySql.csproj", "{1AA03F3C-1A3E-4C3A-913D-41F9938E5F02}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Linquel.Data.SQLite", "Linquel.Data.SQLite\Linquel.Data.SQLite.csproj", "{600418CD-E2E4-4504-B4CD-6EF382FAA3E6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,6 +46,14 @@ Global
 		{2D916130-2B32-4AE9-8012-D5A1079368A7}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2D916130-2B32-4AE9-8012-D5A1079368A7}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2D916130-2B32-4AE9-8012-D5A1079368A7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1AA03F3C-1A3E-4C3A-913D-41F9938E5F02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1AA03F3C-1A3E-4C3A-913D-41F9938E5F02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1AA03F3C-1A3E-4C3A-913D-41F9938E5F02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1AA03F3C-1A3E-4C3A-913D-41F9938E5F02}.Release|Any CPU.Build.0 = Release|Any CPU
+		{600418CD-E2E4-4504-B4CD-6EF382FAA3E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{600418CD-E2E4-4504-B4CD-6EF382FAA3E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{600418CD-E2E4-4504-B4CD-6EF382FAA3E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{600418CD-E2E4-4504-B4CD-6EF382FAA3E6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

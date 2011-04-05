@@ -16,26 +16,23 @@ using System.Text;
 
 namespace IQToolkit.Data.SqlServerCe
 {
-    public class SqlCeQueryProvider : DbQueryProvider
+    using IQToolkit.Data.Common;
+
+    public class SqlCeQueryProvider : DbEntityProvider
     {
         public SqlCeQueryProvider(SqlCeConnection connection, QueryMapping mapping)
-            : base(connection, mapping, null)
+            : base(connection, mapping, QueryPolicy.Default)
         {
         }
 
-        public SqlCeQueryProvider(SqlCeConnection connection, QueryMapping mapping, TextWriter log)
-            : base(connection, mapping, log)
+        public SqlCeQueryProvider(SqlCeConnection connection, QueryMapping mapping, QueryPolicy policy)
+            : base(connection, mapping, policy)
         {
         }
 
-        public SqlCeQueryProvider(SqlCeConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
-            : base(connection, mapping, policy, log)
+        public override DbEntityProvider New(DbConnection connection, QueryMapping mapping, QueryPolicy policy)
         {
-        }
-
-        public override DbQueryProvider Create(DbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
-        {
-            return new SqlCeQueryProvider((SqlCeConnection)connection, mapping, policy, log);
+            return new SqlCeQueryProvider((SqlCeConnection)connection, mapping, policy);
         }
 
         public static string GetConnectionString(string databaseFile)

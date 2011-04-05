@@ -14,6 +14,8 @@ using System.Text;
 
 namespace IQToolkit.Data.Access
 {
+    using IQToolkit.Data.Common;
+
     /// <summary>
     /// TSQL specific QueryLanguage
     /// </summary>
@@ -52,7 +54,9 @@ namespace IQToolkit.Data.Access
 
             expression = CrossJoinIsolator.Isolate(expression);
             expression = SkipToNestedOrderByRewriter.Rewrite(expression);
+            expression = OrderByRewriter.Rewrite(expression);
             expression = UnusedColumnRemover.Remove(expression);
+            expression = RedundantSubqueryRemover.Remove(expression);
 
             return expression;
         }

@@ -101,6 +101,8 @@ namespace IQToolkit
             if (pi != null) return pi.PropertyType;
             EventInfo ei = mi as EventInfo;
             if (ei != null) return ei.EventHandlerType;
+            MethodInfo meth = mi as MethodInfo;  // property getters really
+            if (meth != null) return meth.ReturnType;
             return null;
         }
 
@@ -123,6 +125,25 @@ namespace IQToolkit
                     return !pi.CanWrite || pi.GetSetMethod() == null;
                 default:
                     return true;
+            }
+        }
+
+        public static bool IsInteger(Type type)
+        {
+            Type nnType = GetNonNullableType(type);
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.SByte:
+                case TypeCode.Int16:
+                case TypeCode.Int32:
+                case TypeCode.Int64:
+                case TypeCode.Byte:
+                case TypeCode.UInt16:
+                case TypeCode.UInt32:
+                case TypeCode.UInt64:
+                    return true;
+                default:
+                    return false;        
             }
         }
     }

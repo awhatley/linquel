@@ -13,6 +13,8 @@ using System.Text;
 
 namespace IQToolkit.Data.SqlServerCe
 {
+    using IQToolkit.Data.Common;
+
     public class SqlCeLanguage : QueryLanguage
     {
         TSqlTypeSystem typeSystem = new TSqlTypeSystem();
@@ -67,8 +69,12 @@ namespace IQToolkit.Data.SqlServerCe
             expression = base.Translate(expression);
 
             expression = SkipToNestedOrderByRewriter.Rewrite(expression);
+            expression = OrderByRewriter.Rewrite(expression);
             expression = UnusedColumnRemover.Remove(expression);
+            expression = RedundantSubqueryRemover.Remove(expression);
 
+            expression = ScalarSubqueryRewriter.Rewrite(expression);
+            
             return expression;
         }
 

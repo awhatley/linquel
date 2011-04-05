@@ -34,8 +34,8 @@ namespace Test
 
         private void CleaupDatabase()
         {
-            this.Exec("DELETE FROM [Orders] WHERE CustomerID LIKE 'XX%'");
-            this.Exec("DELETE FROM [Customers] WHERE CustomerID LIKE 'XX%'");
+            this.ExecSilent("DELETE FROM Orders WHERE CustomerID LIKE 'XX%'");
+            this.ExecSilent("DELETE FROM Customers WHERE CustomerID LIKE 'XX%'");
         }
 
         public void TestInsertCustomerNoResult()
@@ -158,7 +158,7 @@ namespace Test
             this.AssertValue("Portland", result);
         }
 
-        public void TestUpdateCustomerWithUpdateCheckThatFails()
+        public void TestUpdateCustomerWithUpdateCheckThatDoesNotSucceed()
         {
             this.TestInsertCustomerNoResult(); // create customer "XX1"
 
@@ -577,7 +577,7 @@ namespace Test
             this.AssertValue(1, result);
         }
 
-        public void TestDeleteCustomerWithDeleteCheckThatFails()
+        public void TestDeleteCustomerWithDeleteCheckThatDoesNotSucceed()
         {
             this.TestInsertCustomerNoResult();
 
@@ -634,7 +634,7 @@ namespace Test
             this.AssertTrue(results.All(r => object.Equals(r, 1)));
         }
 
-        public void TestBatchDeleteCustomersWithDeleteCheckThatFails()
+        public void TestBatchDeleteCustomersWithDeleteCheckThatDoesNotSucceed()
         {
             this.TestBatchInsertCustomersNoResult();
 
@@ -660,6 +660,120 @@ namespace Test
 
             var result = db.Customers.Delete(c => c.CustomerID.StartsWith("XX"));
             this.AssertValue(10, result);
+        }
+
+        public void TestSessionIdentityCache()
+        {
+            NorthwindSession ns = new NorthwindSession(this.provider);
+
+            // both objects should the same instance
+            var cust = ns.Customers.Single(c => c.CustomerID == "ALFKI");
+            var cust2 = ns.Customers.Single(c => c.CustomerID == "ALFKI");
+
+            AssertNotValue(null, cust);
+            AssertNotValue(null, cust2);
+            AssertValue(cust, cust2);
+        }
+
+        public void TestSessionProviderNotIdentityCached()
+        {
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            Northwind db2 = new Northwind(ns.Session.Provider);
+
+            var cust = ns.Customers.Single(c => c.CustomerID == "ALFKI");
+            var cust2 = ns.Customers.ProviderTable.Single(c => c.CustomerID == "ALFKI");
+
+            AssertNotValue(null, cust);
+            AssertNotValue(null, cust2);
+            AssertValue(cust.CustomerID, cust2.CustomerID);
+            AssertNotValue(cust, cust2);
+        }
+
+        public void TestSessionInsertCustomer()
+        {
+            NorthwindSession ns = new NorthwindSession(this.provider);
+
+            var cust = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company1",
+                ContactName = "Contact1",
+                City = "Seattle",
+                Country = "USA"
+            };
+
+            ns.Customers.InsertOnSubmit(cust);
+            ns.SubmitChanges();
+        }
+
+        public void TestSessionUpdateCustomer()
+        {
+            this.db.Customers.Insert(
+                new Customer
+                {
+                    CustomerID = "XX1",
+                    CompanyName = "Company1",
+                    ContactName = "Contact1",
+                    City = "Seattle",
+                    Country = "USA"
+                });
+
+            var ns = new NorthwindSession(this.provider);
+
+            // fetch the previously inserted customer
+            var cust = ns.Customers.Single(c => c.CustomerID == "XX1");
+            cust.ContactName = "Contact Modified";
+
+            ns.SubmitChanges();
+
+            var cust2 = this.db.Customers.Single(c => c.CustomerID == "XX1");
+
+            AssertValue("Contact Modified", cust2.ContactName);
+        }
+
+        public void TestSessionSubmitActionOnModify()
+        {
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            var cust = ns.Customers.Single(c => c.CustomerID == "ALFKI");
+            var action = ns.Customers.GetSubmitAction(cust);
+            AssertValue(SubmitAction.PossibleUpdate, action);
+            cust.Phone = cust.Phone + "X";
+            var action2 = ns.Customers.GetSubmitAction(cust);
+            AssertValue(SubmitAction.Update, action2);
+        }
+
+        public void TestSessionSubmitActionOnInsert()
+        {
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            var cust = new Customer
+                {
+                    CustomerID = "XX1",
+                    CompanyName = "Company1",
+                    ContactName = "Contact1",
+                    City = "Seattle",
+                    Country = "USA"
+                };
+            ns.Customers.InsertOnSubmit(cust);
+            AssertValue(SubmitAction.Insert, ns.Customers.GetSubmitAction(cust));
+            ns.SubmitChanges();
+            AssertValue(SubmitAction.PossibleUpdate, ns.Customers.GetSubmitAction(cust));
+        }
+
+        public void TestSessionSubmitActionOnInsertOrUpdate()
+        {
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            var cust = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company1",
+                ContactName = "Contact1",
+                City = "Seattle",
+                Country = "USA"
+            };
+            ns.Customers.InsertOrUpdateOnSubmit(cust);
+            AssertValue(SubmitAction.InsertOrUpdate, ns.Customers.GetSubmitAction(cust));
+            ns.SubmitChanges();
+            AssertValue(SubmitAction.PossibleUpdate, ns.Customers.GetSubmitAction(cust));
         }
     }
 }

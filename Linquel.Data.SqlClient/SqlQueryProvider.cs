@@ -16,31 +16,49 @@ using System.Text;
 
 namespace IQToolkit.Data.SqlClient
 {
-    public class SqlQueryProvider : DbQueryProvider
+    using IQToolkit.Data.Common;
+
+    public class SqlQueryProvider : DbEntityProvider
     {
+        bool? allowMulitpleActiveResultSets;
+
         public SqlQueryProvider(SqlConnection connection, QueryMapping mapping)
-            : base(connection, mapping, null)
+            : base(connection, mapping, QueryPolicy.Default)
         {
         }
 
-        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping, TextWriter log)
-            : base(connection, mapping, log)
+        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping, QueryPolicy policy)
+            : base(connection, mapping, policy)
         {
         }
 
-        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
-            : base(connection, mapping, policy, log)
+        public override DbEntityProvider New(DbConnection connection, QueryMapping mapping, QueryPolicy policy)
         {
+            return new SqlQueryProvider((SqlConnection)connection, mapping, policy);
         }
 
-        public override DbQueryProvider Create(DbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
-        {
-            return new SqlQueryProvider((SqlConnection)connection, mapping, policy, log);
-        }
-
-        public static string GetExpressConnectionString(string databaseFile)
+        public static string GetConnectionString(string databaseFile)
         {
             return string.Format(@"Data Source=.\SQLEXPRESS;Integrated Security=True;Connect Timeout=30;User Instance=True;MultipleActiveResultSets=true;AttachDbFilename='{0}'", databaseFile);
+        }
+
+        protected override bool BufferResultRows
+        {
+            get { return !this.AllowsMultipleActiveResultSets; }
+        }
+
+        public bool AllowsMultipleActiveResultSets
+        {
+            get
+            {
+                if (this.allowMulitpleActiveResultSets == null)
+                {
+                    var builder = new SqlConnectionStringBuilder(this.Connection.ConnectionString);
+                    var result = builder["MultipleActiveResultSets"];
+                    this.allowMulitpleActiveResultSets = (result != null && result.GetType() == typeof(bool) && (bool)result);
+                }
+                return (bool)this.allowMulitpleActiveResultSets;
+            }
         }
 
         protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
@@ -58,14 +76,22 @@ namespace IQToolkit.Data.SqlClient
 
         public override IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream)
         {
-            var result = this.ExecuteBatch(query, paramSets, batchSize);
-            if (!stream)
+            this.StartUsingConnection();
+            try
             {
-                return result.ToList();
+                var result = this.ExecuteBatch(query, paramSets, batchSize);
+                if (!stream || this.ActionOpenedConnection)
+                {
+                    return result.ToList();
+                }
+                else
+                {
+                    return new EnumerateOnce<int>(result);
+                }
             }
-            else
+            finally
             {
-                return new EnumerateOnce<int>(result);
+                this.StopUsingConnection();
             }
         }
 

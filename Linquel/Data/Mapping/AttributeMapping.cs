@@ -11,8 +11,10 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 
-namespace IQToolkit.Data
+namespace IQToolkit.Data.Mapping
 {
+    using Common;
+
     public abstract class MappingAttribute : Attribute
     {
     }
@@ -23,13 +25,13 @@ namespace IQToolkit.Data
         public string Alias { get; set; }
     }
 
-    [AttributeUsage(AttributeTargets.Property|AttributeTargets.Field, AllowMultiple = false, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Property|AttributeTargets.Field, AllowMultiple = false)]
     public class TableAttribute : TableBaseAttribute
     {
         public Type EntityType { get; set; }
     }
 
-    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true)]
     public class ExtensionTableAttribute : TableBaseAttribute
     {
         public string KeyColumns { get; set; }
@@ -42,7 +44,7 @@ namespace IQToolkit.Data
         public string Member { get; set; }
     }
 
-    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true)]
     public class ColumnAttribute : MemberAttribute
     {
         public string Name { get; set; }
@@ -53,14 +55,15 @@ namespace IQToolkit.Data
         public bool IsGenerated { get; set; }
     }
 
-    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field, AllowMultiple = true)]
     public class AssociationAttribute : MemberAttribute
     {
-        public string RelationshipName { get; set; }
+        public string Name { get; set; }
         public string KeyMembers { get; set; }
         public string RelatedEntityID { get; set; }
         public Type RelatedEntityType { get; set; }
         public string RelatedKeyMembers { get; set; }
+        public bool IsForeignKey { get; set; }
     }
 
     public class AttributeMapping : AdvancedMapping
@@ -81,18 +84,23 @@ namespace IQToolkit.Data
             return this.GetEntity(elementType, contextMember.Name);
         }
 
-        public override MappingEntity GetEntity(Type type, string entityId, Type entityType)
+        public override MappingEntity GetEntity(Type type, string tableId)
+        {
+            return this.GetEntity(type, tableId, type);
+        }
+
+        private MappingEntity GetEntity(Type elementType, string tableId, Type entityType)
         {
             MappingEntity entity;
             rwLock.AcquireReaderLock(Timeout.Infinite);
-            if (!entities.TryGetValue(entityId, out entity))
+            if (!entities.TryGetValue(tableId, out entity))
             {
                 rwLock.ReleaseReaderLock();
                 rwLock.AcquireWriterLock(Timeout.Infinite);
-                if (!entities.TryGetValue(entityId, out entity))
+                if (!entities.TryGetValue(tableId, out entity))
                 {
-                    entity = this.CreateEntity(type, entityId, entityType);
-                    this.entities.Add(entityId, entity);
+                    entity = this.CreateEntity(elementType, tableId, entityType);
+                    this.entities.Add(tableId, entity);
                 }
                 rwLock.ReleaseWriterLock();
             }
@@ -109,33 +117,33 @@ namespace IQToolkit.Data
             return (MappingAttribute[])Attribute.GetCustomAttributes(contextMember, typeof(MappingAttribute));
         }
 
-        public override MappingEntity GetEntity(Type type)
+        public override string GetTableId(Type entityType)
         {
-            return this.GetEntity(type, this.GetEntityID(type));
-        }
-
-        private string GetEntityID(Type entityType)
-        {
-            foreach (var mi in contextType.GetMembers(BindingFlags.Instance | BindingFlags.Public))
+            if (contextType != null)
             {
-                FieldInfo fi = mi as FieldInfo;
-                if (fi != null && TypeHelper.GetElementType(fi.FieldType) == entityType)
-                    return fi.Name;
-                PropertyInfo pi = mi as PropertyInfo;
-                if (pi != null && TypeHelper.GetElementType(pi.PropertyType) == entityType)
-                    return pi.Name;
+                foreach (var mi in contextType.GetMembers(BindingFlags.Instance | BindingFlags.Public))
+                {
+                    FieldInfo fi = mi as FieldInfo;
+                    if (fi != null && TypeHelper.GetElementType(fi.FieldType) == entityType)
+                        return fi.Name;
+                    PropertyInfo pi = mi as PropertyInfo;
+                    if (pi != null && TypeHelper.GetElementType(pi.PropertyType) == entityType)
+                        return pi.Name;
+                }
             }
-            throw new InvalidOperationException(string.Format("Cannot find context property for entity type '{0}'", entityType));
+            return entityType.Name;
         }
 
-        private MappingEntity CreateEntity(Type elementType, string entityId, Type entityType)
+        private MappingEntity CreateEntity(Type elementType, string tableId, Type entityType)
         {
+            if (tableId == null)
+                tableId = this.GetTableId(elementType);
             var members = new HashSet<string>();
             var mappingMembers = new List<AttributeMappingMember>();
-            int dot = entityId.IndexOf('.');
-            var rootEntityId = dot > 0 ? entityId.Substring(0, dot) : entityId;
-            var path = dot > 0 ? entityId.Substring(dot + 1) : "";
-            var mappingAttributes = this.GetMappingAttributes(rootEntityId);
+            int dot = tableId.IndexOf('.');
+            var rootTableId = dot > 0 ? tableId.Substring(0, dot) : tableId;
+            var path = dot > 0 ? tableId.Substring(dot + 1) : "";
+            var mappingAttributes = this.GetMappingAttributes(rootTableId);
             var tableAttributes = mappingAttributes.OfType<TableBaseAttribute>()
                 .OrderBy(ta => ta.Name);
             var tableAttr = tableAttributes.OfType<TableAttribute>().FirstOrDefault();
@@ -164,8 +172,8 @@ namespace IQToolkit.Data
                         continue; // already seen it (ignore additional)
                     members.Add(nestedMember);
                     member = this.FindMember(entityType, nestedMember);
-                    string newEntityId = entityId + "." + nestedMember;
-                    nested = (AttributeMappingEntity)this.GetEntity(TypeHelper.GetMemberType(member), newEntityId, entityType);
+                    string newTableId = tableId + "." + nestedMember;
+                    nested = (AttributeMappingEntity)this.GetEntity(TypeHelper.GetMemberType(member), newTableId);
                 }
                 else 
                 {
@@ -178,7 +186,7 @@ namespace IQToolkit.Data
                 }
                 mappingMembers.Add(new AttributeMappingMember(member, attribute, nested));
             }
-            return new AttributeMappingEntity(elementType, entityId, entityType, tableAttributes, mappingMembers);
+            return new AttributeMappingEntity(elementType, tableId, entityType, tableAttributes, mappingMembers);
         }
 
         private static readonly char[] dotSeparator = new char[] { '.' };
@@ -210,11 +218,11 @@ namespace IQToolkit.Data
         {
             string name = (attr != null && !string.IsNullOrEmpty(attr.Name))
                 ? attr.Name
-                : entity.EntityID;
+                : entity.TableId;
             return name;
         }
 
-        protected override IEnumerable<MemberInfo> GetMappedMembers(MappingEntity entity)
+        public override IEnumerable<MemberInfo> GetMappedMembers(MappingEntity entity)
         {
             return ((AttributeMappingEntity)entity).MappedMembers;
         }
@@ -243,7 +251,7 @@ namespace IQToolkit.Data
             return mm != null && mm.Column != null && mm.Column.IsGenerated;
         }
 
-        protected override bool IsPrimaryKey(MappingEntity entity, MemberInfo member)
+        public override bool IsPrimaryKey(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.Column != null && mm.Column.IsPrimaryKey;
@@ -269,6 +277,28 @@ namespace IQToolkit.Data
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.Association != null;        
+        }
+
+        protected override bool IsRelationshipSource(MappingEntity entity, MemberInfo member)
+        {
+            AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
+            if (mm != null && mm.Association != null)
+            {
+                if (mm.Association.IsForeignKey && !typeof(IEnumerable).IsAssignableFrom(TypeHelper.GetMemberType(member)))
+                    return true;
+            }
+            return false;
+        }
+
+        protected override bool IsRelationshipTarget(MappingEntity entity, MemberInfo member)
+        {
+            AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
+            if (mm != null && mm.Association != null)
+            {
+                if (!mm.Association.IsForeignKey || typeof(IEnumerable).IsAssignableFrom(TypeHelper.GetMemberType(member)))
+                    return true;
+            }
+            return false;
         }
 
         protected override bool IsNestedEntity(MappingEntity entity, MemberInfo member)
@@ -313,10 +343,11 @@ namespace IQToolkit.Data
         protected override IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingEntity thisEntity = (AttributeMappingEntity)entity;
+            AttributeMappingEntity relatedEntity = (AttributeMappingEntity)this.GetRelatedEntity(entity, member);
             AttributeMappingMember mm = thisEntity.GetMappingMember(member.Name);
             if (mm != null && mm.Association != null)
             {
-                return mm.Association.RelatedKeyMembers.Split(separators).Select(k => thisEntity.GetMappingMember(k).Member);
+                return mm.Association.RelatedKeyMembers.Split(separators).Select(k => relatedEntity.GetMappingMember(k).Member);
             }
             return base.GetAssociationRelatedKeyMembers(entity, member);
         }
@@ -445,24 +476,24 @@ namespace IQToolkit.Data
 
         class AttributeMappingEntity : MappingEntity
         {
-            string entityID;
+            string tableId;
             Type elementType;
             Type entityType;
             ReadOnlyCollection<MappingTable> tables;
             Dictionary<string, AttributeMappingMember> mappingMembers;
 
-            internal AttributeMappingEntity(Type elementType, string entityId, Type entityType, IEnumerable<TableBaseAttribute> attrs, IEnumerable<AttributeMappingMember> mappingMembers)
+            internal AttributeMappingEntity(Type elementType, string tableId, Type entityType, IEnumerable<TableBaseAttribute> attrs, IEnumerable<AttributeMappingMember> mappingMembers)
             {
-                this.entityID = entityId;
+                this.tableId = tableId;
                 this.elementType = elementType;
                 this.entityType = entityType;
                 this.tables = attrs.Select(a => (MappingTable)new AttributeMappingTable(this, a)).ToReadOnly();
                 this.mappingMembers = mappingMembers.ToDictionary(mm => mm.Member.Name);
             }
 
-            public override string EntityID
+            public override string TableId
             {
-                get { return this.entityID; }
+                get { return this.tableId; }
             }
 
             public override Type ElementType

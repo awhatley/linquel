@@ -14,6 +14,8 @@ using System.Text;
 
 namespace IQToolkit.Data.Access
 {
+    using IQToolkit.Data.Common;
+
     public class AccessTypeSystem : TSqlTypeSystem
     {
         public override SqlDbType GetSqlType(string typeName)

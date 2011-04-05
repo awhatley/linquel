@@ -27,14 +27,14 @@ namespace Test
         protected void RunTests(MultiTableContext db, string baselineFile, string newBaselineFile, bool executeQueries)
         {
             this.db = db;
-            DbQueryProvider provider = (DbQueryProvider)db.Provider;
+            DbEntityProvider provider = (DbEntityProvider)db.Provider;
             base.RunTests(provider, baselineFile, newBaselineFile, executeQueries);
         }
 
         protected void RunTest(MultiTableContext db, string baselineFile, bool executeQueries, string testName)
         {
             this.db = db;
-            DbQueryProvider provider = (DbQueryProvider)db.Provider;
+            DbEntityProvider provider = (DbEntityProvider)db.Provider;
             base.RunTest(provider, baselineFile, executeQueries, testName);
         }
 
@@ -50,26 +50,26 @@ namespace Test
 
         private void CleaupDatabase()
         {
-            Exec("DELETE FROM TestTable3");
-            Exec("DELETE FROM TestTable2");
-            Exec("DELETE FROM TestTable1");
+            ExecSilent("DELETE FROM TestTable3");
+            ExecSilent("DELETE FROM TestTable2");
+            ExecSilent("DELETE FROM TestTable1");
         }
 
         protected override void SetupSuite()
         {
-            Exec("DROP TABLE TestTable3");
-            Exec("DROP TABLE TestTable2");
-            Exec("DROP TABLE TestTable1");
-            Exec("CREATE TABLE TestTable1 (ID int IDENTITY(1) PRIMARY KEY, Value1 VARCHAR(10))");
-            Exec("CREATE TABLE TestTable2 (ID int PRIMARY KEY REFERENCES TestTable1(ID), Value2 VARCHAR(10))");
-            Exec("CREATE TABLE TestTable3 (ID int PRIMARY KEY REFERENCES TestTable1(ID), Value3 VARCHAR(10))");
+            ExecSilent("DROP TABLE TestTable3");
+            ExecSilent("DROP TABLE TestTable2");
+            ExecSilent("DROP TABLE TestTable1");
+            ExecSilent("CREATE TABLE TestTable1 (ID int IDENTITY(1) PRIMARY KEY, Value1 VARCHAR(10))");
+            ExecSilent("CREATE TABLE TestTable2 (ID int PRIMARY KEY REFERENCES TestTable1(ID), Value2 VARCHAR(10))");
+            ExecSilent("CREATE TABLE TestTable3 (ID int PRIMARY KEY REFERENCES TestTable1(ID), Value3 VARCHAR(10))");
         }
 
         protected override void TeardownSuite()
         {
-            Exec("DROP TABLE TestTable3");
-            Exec("DROP TABLE TestTable2");
-            Exec("DROP TABLE TestTable1");
+            ExecSilent("DROP TABLE TestTable3");
+            ExecSilent("DROP TABLE TestTable2");
+            ExecSilent("DROP TABLE TestTable1");
         }
 
         public void TestInsert()

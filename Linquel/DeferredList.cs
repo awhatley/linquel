@@ -16,11 +16,19 @@ namespace IQToolkit
         void Load();
     }
 
+    public interface IDeferredList : IList, IDeferLoadable
+    {
+    }
+
+    public interface IDeferredList<T> : IList<T>, IDeferredList
+    {
+    }
+
     /// <summary>
     /// A list implementation that is loaded the first the contents are examined
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class DeferredList<T> : IList<T>, ICollection<T>, IEnumerable<T>, IList, ICollection, IEnumerable, IDeferLoadable
+    public class DeferredList<T> : IDeferredList<T>, ICollection<T>, IEnumerable<T>, IList, ICollection, IEnumerable, IDeferLoadable
     {
         IEnumerable<T> source;
         List<T> values;

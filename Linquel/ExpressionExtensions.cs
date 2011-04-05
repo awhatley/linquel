@@ -62,6 +62,12 @@ namespace IQToolkit
             return Expression.Or(expression1, expression2);
         }
 
+        public static Expression Binary(this Expression expression1, ExpressionType op, Expression expression2)
+        {
+            ConvertExpressions(ref expression1, ref expression2);
+            return Expression.MakeBinary(op, expression1, expression2);
+        }
+
         private static void ConvertExpressions(ref Expression expression1, ref Expression expression2)
         {
             if (expression1.Type != expression2.Type)

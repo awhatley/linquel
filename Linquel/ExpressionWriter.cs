@@ -291,7 +291,7 @@ namespace IQToolkit
             }
             else if (c.Type == typeof(DateTime))
             {
-                this.Write("new DataTime(\"");
+                this.Write("new DateTime(\"");
                 this.Write(c.Value.ToString());
                 this.Write("\")");
             }

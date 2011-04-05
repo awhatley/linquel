@@ -9,6 +9,9 @@ using IQToolkit.Data;
 
 namespace Test
 {
+    using IQToolkit.Data.Common;
+    using IQToolkit.Data.Mapping;
+
     class TestPolicy : QueryPolicy
     {
         HashSet<string> included;

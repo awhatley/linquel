@@ -15,6 +15,18 @@ using System.Xml.Linq;
 namespace Test
 {
     using IQToolkit.Data;
+    using IQToolkit.Data.Common;
+
+    [AttributeUsage(AttributeTargets.Method, AllowMultiple=true, Inherited=true)]
+    public class ExcludeProvider : Attribute
+    {
+        public string Provider { get; set; }
+
+        public ExcludeProvider(string provider)
+        {
+            this.Provider = provider;
+        }
+    }
 
     public class TestHarness
     {
@@ -28,7 +40,7 @@ namespace Test
 
         private delegate void TestMethod();
 
-        protected DbQueryProvider provider;
+        protected DbEntityProvider provider;
         XmlTextWriter baselineWriter;
         Dictionary<string, string> baselines;
         bool executeQueries;
@@ -38,14 +50,14 @@ namespace Test
         {
         }
 
-        protected void RunTest(DbQueryProvider provider, string baselineFile, bool executeQueries, string testName)
+        protected void RunTest(DbEntityProvider provider, string baselineFile, bool executeQueries, string testName)
         {
             this.RunTests(provider, baselineFile, null, executeQueries,
                 new MethodInfo[] { this.GetType().GetMethod(testName) }
                 );
         }
 
-        protected void RunTests(DbQueryProvider provider, string baselineFile, string newBaselineFile, bool executeQueries)
+        protected void RunTests(DbEntityProvider provider, string baselineFile, string newBaselineFile, bool executeQueries)
         {
             this.RunTests(provider, baselineFile, newBaselineFile, executeQueries, this.GetType().GetMethods().Where(m => m.Name.StartsWith("Test")).ToArray());
         }
@@ -56,7 +68,7 @@ namespace Test
             internal string Reason;
         }
 
-        protected void RunTests(DbQueryProvider provider, string baselineFile, string newBaselineFile, bool executeQueries, MethodInfo[] tests)
+        protected void RunTests(DbEntityProvider provider, string baselineFile, string newBaselineFile, bool executeQueries, MethodInfo[] tests)
         {
             this.provider = provider;
             this.executeQueries = executeQueries;
@@ -78,16 +90,18 @@ namespace Test
             ConsoleColor originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("Running tests: {0}", this.GetType().Name);
+            Console.ForegroundColor = ConsoleColor.Gray;
 
             try
             {
-                foreach (MethodInfo method in tests.Where(m => m != null))
+                foreach (MethodInfo method in tests.Where(m => m != null && TestIsEnabled(m)))
                 {
                     iTest++;
                     currentMethod = method;
                     string testName = method.Name.Substring(4);
                     bool passed = false;
                     Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Gray;
                     SetupTest();
                     string reason = "";
                     try
@@ -95,13 +109,28 @@ namespace Test
                         Console.ForegroundColor = ConsoleColor.Gray;
                         TestMethod test = (TestMethod)Delegate.CreateDelegate(typeof(TestMethod), this, method);
                         test();
-                        passed = true;
-                        iPassed++;
+                        if (testName.EndsWith("Fails"))
+                        {
+                            passed = false;
+                            reason = "Expected failure";
+                        }
+                        else
+                        {
+                            passed = true;
+                            iPassed++;
+                        }
                     }
-                    catch (TestFailureException tf)
+                    catch (Exception tf)//(TestFailureException tf)
                     {
-                        if (tf.Message != null)
+                        if (testName.EndsWith("Fails"))
+                        {
+                            passed = true;
+                            iPassed++;
+                        }
+                        else if (tf.Message != null)
+                        {
                             reason = tf.Message;
+                        }
                     }
                     finally
                     {
@@ -152,6 +181,26 @@ namespace Test
             Console.WriteLine();
         }
 
+        private bool TestIsEnabled(MethodInfo test)
+        {
+            ExcludeProvider[] exclusions = (ExcludeProvider[])test.GetCustomAttributes(typeof(ExcludeProvider), true);
+            foreach (var exclude in exclusions)
+            {
+                if (
+                    // actual name of the provider type
+                    string.Compare(this.provider.GetType().Name, exclude.Provider, true) == 0
+                    // prefix of the provider type xxxQueryProvider
+                    || string.Compare(this.provider.GetType().Name, exclude.Provider + "QueryProvider", true) == 0
+                    // last name of the namespace
+                    || string.Compare(this.provider.GetType().Namespace.Split(new[] { '.' }).Last(), exclude.Provider, true) == 0
+                    )
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         protected virtual void SetupTest()
         {
         }
@@ -191,12 +240,12 @@ namespace Test
 
         protected void TestQuery(IQueryable query)
         {
-            TestQuery((DbQueryProvider)query.Provider, query.Expression, currentMethod.Name, false);
+            TestQuery((DbEntityProviderBase)query.Provider, query.Expression, currentMethod.Name, false);
         }
 
         protected void TestQuery(IQueryable query, string baselineKey)
         {
-            TestQuery((DbQueryProvider)query.Provider, query.Expression, baselineKey, false);
+            TestQuery((DbEntityProviderBase)query.Provider, query.Expression, baselineKey, false);
         }
 
         protected void TestQuery(Expression<Func<object>> query)
@@ -211,7 +260,7 @@ namespace Test
 
         protected void TestQueryFails(IQueryable query)
         {
-            TestQuery((DbQueryProvider)query.Provider, query.Expression, currentMethod.Name, true);
+            TestQuery((DbEntityProviderBase)query.Provider, query.Expression, currentMethod.Name, true);
         }
 
         protected void TestQueryFails(Expression<Func<object>> query)
@@ -219,7 +268,7 @@ namespace Test
             TestQuery(this.provider, query.Body, currentMethod.Name, true);
         }
 
-        protected void TestQuery(DbQueryProvider pro, Expression query, string baselineKey, bool expectedToFail)
+        protected void TestQuery(DbEntityProviderBase pro, Expression query, string baselineKey, bool expectedToFail)
         {
             ConsoleColor originalColor = Console.ForegroundColor;
             try
@@ -246,7 +295,7 @@ namespace Test
                 catch (Exception e)
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine(string.Format("Query translation failed for {0}", baselineKey));
+                    Console.WriteLine(string.Format("Table translation failed for {0}", baselineKey));
                     Console.ForegroundColor = ConsoleColor.Gray;
                     Console.WriteLine(query.ToString());
                     throw new TestFailureException(e.Message);
@@ -269,7 +318,7 @@ namespace Test
                         else
                         {
                             IDisposable disposable = result as IDisposable;
-                            if (disposable != null) 
+                            if (disposable != null)
                                 disposable.Dispose();
                         }
                     }
@@ -279,7 +328,7 @@ namespace Test
                         if (!expectedToFail)
                         {
                             Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine("Query failed to execute:");
+                            Console.WriteLine("Table failed to execute:");
                             Console.ForegroundColor = ConsoleColor.Gray;
                             Console.WriteLine(queryText);
                             throw new TestFailureException(e.Message);
@@ -288,11 +337,17 @@ namespace Test
                     if (caught == null && expectedToFail)
                     {
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("Query succeeded when expected to fail");
+                        Console.WriteLine("Table succeeded when expected to fail");
                         Console.ForegroundColor = ConsoleColor.Gray;
                         Console.WriteLine(queryText);
                         throw new TestFailureException(null);
                     }
+                }
+                else if (pro.Log != null)
+                {
+                    var text = pro.GetQueryText(query);
+                    pro.Log.WriteLine(text);
+                    pro.Log.WriteLine();
                 }
 
                 string baseline = null;
@@ -303,7 +358,7 @@ namespace Test
                     if (trimAct != trimBase)
                     {
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("Query translation does not match baseline:");
+                        Console.WriteLine("Table translation does not match baseline:");
                         Console.ForegroundColor = ConsoleColor.Gray;
                         Console.WriteLine(queryText);
                         Console.ForegroundColor = ConsoleColor.Yellow;
@@ -389,6 +444,14 @@ namespace Test
             }
         }
 
+        protected void AssertValue(double expected, double actual, double epsilon)
+        {
+            if (!(actual >= expected - epsilon && actual <= expected + epsilon))
+            {
+                throw new TestFailureException(string.Format("Assert failure - expected: {0} +/- {1} actual: {1}", expected, epsilon, actual));
+            }
+        }
+
         protected void AssertNotValue(object notExpected, object actual)
         {
             if (object.Equals(notExpected, actual))
@@ -407,13 +470,11 @@ namespace Test
             this.AssertValue(false, value);
         }
 
-        protected bool Exec(string commandText)
+        protected bool ExecSilent(string commandText)
         {
-            var cmd = this.provider.Connection.CreateCommand();
-            cmd.CommandText = commandText;
             try
             {
-                cmd.ExecuteNonQuery();
+                this.provider.ExecuteCommand(commandText);
                 return true;
             }
             catch (Exception)
