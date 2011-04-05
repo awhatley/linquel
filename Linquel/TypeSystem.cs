@@ -31,10 +31,34 @@ namespace Sample {
             }
             return null;
         }
+        internal static Type GetSequenceType(Type elementType) {
+            return typeof(IEnumerable<>).MakeGenericType(elementType);
+        }
         internal static Type GetElementType(Type seqType) {
             Type ienum = FindIEnumerable(seqType);
             if (ienum == null) return seqType;
             return ienum.GetGenericArguments()[0];
+        }
+        internal static bool IsNullableType(Type type) {
+            return type != null && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
+        }
+        internal static bool IsNullAssignable(Type type) {
+            return !type.IsValueType || IsNullableType(type);
+        }
+        internal static Type GetNonNullableType(Type type) {
+            if (IsNullableType(type)) {
+                return type.GetGenericArguments()[0];
+            }
+            return type;
+        }
+        internal static Type GetMemberType(MemberInfo mi) {
+            FieldInfo fi = mi as FieldInfo;
+            if (fi != null) return fi.FieldType;
+            PropertyInfo pi = mi as PropertyInfo;
+            if (pi != null) return pi.PropertyType;
+            EventInfo ei = mi as EventInfo;
+            if (ei != null) return ei.EventHandlerType;
+            return null;
         }
     }
 }

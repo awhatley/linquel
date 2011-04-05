@@ -36,14 +36,20 @@ namespace Sample {
 
     class Program {
         static void Main(string[] args) {
-            string constr = @"…";
+            string constr = @"Data Source=.\SQLEXPRESS;AttachDbFilename=C:\data\Northwind.mdf;Integrated Security=True;Connect Timeout=30;User Instance=True";
             using (SqlConnection con = new SqlConnection(constr)) {
                 con.Open();
                 Northwind db = new Northwind(con);
 
                 string city = "London";
-                var query = db.Customers.Where(c => c.City == city)
-                              .Select(c => new {Name = c.ContactName, Phone = c.Phone});
+                var query = db.Customers.Select(c => new {
+                    Name = c.ContactName,
+                    Location = new {
+                        City = c.City,
+                        Country = c.Country
+                    }
+                }).Where(c => c.Location.City == city);
+
                 Console.WriteLine("Query:\n{0}\n", query);
 
                 var list = query.ToList();
