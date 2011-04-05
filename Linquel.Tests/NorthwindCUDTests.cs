@@ -666,7 +666,7 @@ namespace Test
         {
             NorthwindSession ns = new NorthwindSession(this.provider);
 
-            // both objects should the same instance
+            // both objects should be the same instance
             var cust = ns.Customers.Single(c => c.CustomerID == "ALFKI");
             var cust2 = ns.Customers.Single(c => c.CustomerID == "ALFKI");
 
@@ -680,6 +680,7 @@ namespace Test
             NorthwindSession ns = new NorthwindSession(this.provider);
             Northwind db2 = new Northwind(ns.Session.Provider);
 
+            // both objects should be different instances
             var cust = ns.Customers.Single(c => c.CustomerID == "ALFKI");
             var cust2 = ns.Customers.ProviderTable.Single(c => c.CustomerID == "ALFKI");
 
@@ -689,57 +690,39 @@ namespace Test
             AssertNotValue(cust, cust2);
         }
 
-        public void TestSessionInsertCustomer()
+        public void TestSessionSubmitActionOnModify()
         {
-            NorthwindSession ns = new NorthwindSession(this.provider);
-
             var cust = new Customer
-            {
-                CustomerID = "XX1",
-                CompanyName = "Company1",
-                ContactName = "Contact1",
-                City = "Seattle",
-                Country = "USA"
-            };
-
-            ns.Customers.InsertOnSubmit(cust);
-            ns.SubmitChanges();
-        }
-
-        public void TestSessionUpdateCustomer()
-        {
-            this.db.Customers.Insert(
-                new Customer
                 {
                     CustomerID = "XX1",
                     CompanyName = "Company1",
                     ContactName = "Contact1",
                     City = "Seattle",
                     Country = "USA"
-                });
+                };
+
+            this.db.Customers.Insert(cust);
 
             var ns = new NorthwindSession(this.provider);
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
 
             // fetch the previously inserted customer
-            var cust = ns.Customers.Single(c => c.CustomerID == "XX1");
+            cust = ns.Customers.Single(c => c.CustomerID == "XX1");
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
             cust.ContactName = "Contact Modified";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust));
 
             ns.SubmitChanges();
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
 
+            // prove actually modified by fetching through provider
             var cust2 = this.db.Customers.Single(c => c.CustomerID == "XX1");
-
             AssertValue("Contact Modified", cust2.ContactName);
-        }
 
-        public void TestSessionSubmitActionOnModify()
-        {
-            NorthwindSession ns = new NorthwindSession(this.provider);
-            var cust = ns.Customers.Single(c => c.CustomerID == "ALFKI");
-            var action = ns.Customers.GetSubmitAction(cust);
-            AssertValue(SubmitAction.PossibleUpdate, action);
-            cust.Phone = cust.Phone + "X";
-            var action2 = ns.Customers.GetSubmitAction(cust);
-            AssertValue(SubmitAction.Update, action2);
+            // ready to be submitted again!
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust));
         }
 
         public void TestSessionSubmitActionOnInsert()
@@ -753,10 +736,16 @@ namespace Test
                     City = "Seattle",
                     Country = "USA"
                 };
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
             ns.Customers.InsertOnSubmit(cust);
             AssertValue(SubmitAction.Insert, ns.Customers.GetSubmitAction(cust));
+
             ns.SubmitChanges();
-            AssertValue(SubmitAction.PossibleUpdate, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust));
         }
 
         public void TestSessionSubmitActionOnInsertOrUpdate()
@@ -770,10 +759,161 @@ namespace Test
                 City = "Seattle",
                 Country = "USA"
             };
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
             ns.Customers.InsertOrUpdateOnSubmit(cust);
             AssertValue(SubmitAction.InsertOrUpdate, ns.Customers.GetSubmitAction(cust));
+
             ns.SubmitChanges();
-            AssertValue(SubmitAction.PossibleUpdate, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust));
+        }
+
+        public void TestSessionSubmitActionOnUpdate()
+        {
+            var cust = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company1",
+                ContactName = "Contact1",
+                City = "Seattle",
+                Country = "USA"
+            };
+            this.db.Customers.Insert(cust);
+
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            ns.Customers.UpdateOnSubmit(cust);
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust));
+
+            ns.SubmitChanges();
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust));
+        }
+
+        public void TestSessionSubmitActionOnDelete()
+        {
+            var cust = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company1",
+                ContactName = "Contact1",
+                City = "Seattle",
+                Country = "USA"
+            };
+            this.db.Customers.Insert(cust);
+
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            ns.Customers.DeleteOnSubmit(cust);
+            AssertValue(SubmitAction.Delete, ns.Customers.GetSubmitAction(cust));
+
+            ns.SubmitChanges();
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            // modifications after delete don't trigger updates
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+        }
+
+        public void TestDeleteThenInsertSamePK()
+        {
+            var cust = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company1",
+                ContactName = "Contact1",
+                City = "Seattle",
+                Country = "USA"
+            };
+
+            var cust2 = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company2",
+                ContactName = "Contact2",
+                City = "Chicago",
+                Country = "USA"
+            };
+
+            this.db.Customers.Insert(cust);
+
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust2));
+
+            ns.Customers.DeleteOnSubmit(cust);
+            AssertValue(SubmitAction.Delete, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust2));
+
+            ns.Customers.InsertOnSubmit(cust2);
+            AssertValue(SubmitAction.Delete, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.Insert, ns.Customers.GetSubmitAction(cust2));
+
+            ns.SubmitChanges();
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust2));
+
+            // modifications after delete don't trigger updates
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            // modifications after insert do trigger updates
+            cust2.City = "ChicagoX";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust2));
+        }
+
+        public void TestInsertThenDeleteSamePK()
+        {
+            var cust = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company1",
+                ContactName = "Contact1",
+                City = "Seattle",
+                Country = "USA"
+            };
+
+            var cust2 = new Customer
+            {
+                CustomerID = "XX1",
+                CompanyName = "Company2",
+                ContactName = "Contact2",
+                City = "Chicago",
+                Country = "USA"
+            };
+
+            this.db.Customers.Insert(cust);
+
+            NorthwindSession ns = new NorthwindSession(this.provider);
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust2));
+
+            ns.Customers.InsertOnSubmit(cust2);
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.Insert, ns.Customers.GetSubmitAction(cust2));
+
+            ns.Customers.DeleteOnSubmit(cust);
+            AssertValue(SubmitAction.Delete, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.Insert, ns.Customers.GetSubmitAction(cust2));
+
+            ns.SubmitChanges();
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust2));
+
+            // modifications after delete don't trigger updates
+            cust.City = "SeattleX";
+            AssertValue(SubmitAction.None, ns.Customers.GetSubmitAction(cust));
+
+            // modifications after insert do trigger updates
+            cust2.City = "ChicagoX";
+            AssertValue(SubmitAction.Update, ns.Customers.GetSubmitAction(cust2));
         }
     }
 }

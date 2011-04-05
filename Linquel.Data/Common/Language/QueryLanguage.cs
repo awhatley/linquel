@@ -228,50 +228,7 @@ namespace IQToolkit.Data.Common
         public virtual bool CanBeColumn(Expression expression)
         {
             // by default, push all work in projection to client
-#if false
-            switch (expression.NodeType)
-            {
-                case ExpressionType.Add:
-                case ExpressionType.AddChecked:
-                case ExpressionType.And:
-                case ExpressionType.AndAlso:
-                //case ExpressionType.Call:  // depends on particular call
-                case ExpressionType.Coalesce:
-                case ExpressionType.Conditional:
-                case ExpressionType.Convert:
-                case ExpressionType.ConvertChecked:
-                case ExpressionType.Divide:
-                case ExpressionType.Equal:
-                case ExpressionType.ExclusiveOr:
-                case ExpressionType.GreaterThan:
-                case ExpressionType.GreaterThanOrEqual:
-                case ExpressionType.LeftShift:
-                case ExpressionType.LessThan:
-                case ExpressionType.LessThanOrEqual:
-                case ExpressionType.MemberAccess:
-                case ExpressionType.Modulo:
-                case ExpressionType.Multiply:
-                case ExpressionType.MultiplyChecked:
-                case ExpressionType.Negate:
-                case ExpressionType.NegateChecked:
-                case ExpressionType.Not:
-                case ExpressionType.NotEqual:
-                case ExpressionType.Or:
-                case ExpressionType.OrElse:
-                case ExpressionType.Power:
-                case ExpressionType.RightShift:
-                case ExpressionType.Subtract:
-                case ExpressionType.SubtractChecked:
-                case ExpressionType.TypeAs:
-                case ExpressionType.TypeIs:
-                case ExpressionType.UnaryPlus:
-                    return true;
-                default:
-                    return false;
-            }
-#else
             return this.MustBeColumn(expression);
-#endif
         }
 
         public virtual bool MustBeColumn(Expression expression)

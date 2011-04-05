@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace IQToolkit
 {
@@ -71,17 +72,50 @@ namespace IQToolkit
 
             private Expression Evaluate(Expression e)
             {
+                Type type = e.Type;
+                if (e.NodeType == ExpressionType.Convert)
+                {
+                    // check for unnecessary convert & strip them
+                    var u = (UnaryExpression)e;
+                    if (TypeHelper.GetNonNullableType(u.Operand.Type) == TypeHelper.GetNonNullableType(type))
+                    {
+                        e = ((UnaryExpression)e).Operand;
+                    }
+                }
                 if (e.NodeType == ExpressionType.Constant)
                 {
-                    return e;
+                    // in case we actually threw out a nullable conversion above, simulate it here
+                    if (e.Type == type)
+                    {
+                        return e;
+                    }
+                    else if (TypeHelper.GetNonNullableType(e.Type) == TypeHelper.GetNonNullableType(type))
+                    {
+                        return Expression.Constant(((ConstantExpression)e).Value, type);
+                    }
                 }
-                Type type = e.Type;
+                var me = e as MemberExpression;
+                if (me != null)
+                {
+                    // member accesses off of constant's are common, and yet since these partial evals
+                    // are never re-used, using reflection to access the member is faster than compiling  
+                    // and invoking a lambda
+                    var ce = me.Expression as ConstantExpression;
+                    if (ce != null)
+                    {
+                        return Expression.Constant(me.Member.GetValue(ce.Value), type);
+                    }
+                }
                 if (type.IsValueType)
                 {
                     e = Expression.Convert(e, typeof(object));
                 }
                 Expression<Func<object>> lambda = Expression.Lambda<Func<object>>(e);
+#if NOREFEMIT
+                Func<object> fn = ExpressionEvaluator.CreateDelegate(lambda);
+#else
                 Func<object> fn = lambda.Compile();
+#endif
                 return Expression.Constant(fn(), type);
             }
         }

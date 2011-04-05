@@ -38,6 +38,24 @@ namespace IQToolkit.Data.Common
             return this.UpdateProjection(proj, select, proj.Projector, proj.Aggregator);
         }
 
+        protected override Expression VisitUnary(UnaryExpression u)
+        {
+            if (u.NodeType == ExpressionType.Convert && u.Operand.NodeType == ExpressionType.ArrayIndex)
+            {
+                var b = (BinaryExpression)u.Operand;
+                if (IsConstantOrParameter(b.Left) && IsConstantOrParameter(b.Right))
+                {
+                    return this.GetNamedValue(u);
+                }
+            }
+            return base.VisitUnary(u);
+        }
+
+        private static bool IsConstantOrParameter(Expression e)
+        {
+            return e != null && e.NodeType == ExpressionType.Constant || e.NodeType == ExpressionType.Parameter;
+        }
+
         protected override Expression VisitBinary(BinaryExpression b)
         {
             Expression left = this.Visit(b.Left);

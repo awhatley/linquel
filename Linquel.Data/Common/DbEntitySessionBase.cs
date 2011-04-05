@@ -85,7 +85,7 @@ namespace IQToolkit.Data.Common
             IEntityTable<T> underlyingTable;
 
             public SessionTable(DbEntitySessionBase session, MappingEntity entity)
-                : base(session.sessionProvider)
+                : base(session.sessionProvider, typeof(ISessionTable<T>))
             {
                 this.session = session;
                 this.entity = entity;
@@ -196,6 +196,11 @@ namespace IQToolkit.Data.Common
                 set { this.provider.Log = value; }
             }
 
+            public override bool CanBeEvaluatedLocally(Expression expression)
+            {
+                return this.provider.CanBeEvaluatedLocally(expression);
+            }
+
             public override int RowsAffected
             {
                 get { return this.provider.RowsAffected; }
@@ -211,7 +216,7 @@ namespace IQToolkit.Data.Common
                 return this.provider.GetTable(entity);
             }
 
-            public override IEnumerable<T> Execute<T>(QueryCommand command, Func<DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
+            public override IEnumerable<T> Execute<T>(QueryCommand command, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
             {
                 return this.provider.Execute<T>(command, Wrap(fnProjector, entity), entity, paramValues);
             }
@@ -221,12 +226,12 @@ namespace IQToolkit.Data.Common
                 return this.provider.ExecuteBatch(query, paramSets, batchSize, stream);
             }
 
-            public override IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbDataReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream)
+            public override IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream)
             {
                 return this.provider.ExecuteBatch<T>(query, paramSets, Wrap(fnProjector, entity), entity, batchSize, stream);
             }
 
-            public override IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
+            public override IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
             {
                 return this.provider.ExecuteDeferred<T>(query, Wrap(fnProjector, entity), entity, paramValues);
             }
@@ -241,9 +246,9 @@ namespace IQToolkit.Data.Common
                 return this.provider.ExecuteCommand(commandText);
             }
 
-            private Func<DbDataReader, T> Wrap<T>(Func<DbDataReader, T> fnProjector, MappingEntity entity)
+            private Func<DbEntityProviderBase, DbDataReader, T> Wrap<T>(Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity)
             {
-                Func<DbDataReader, T> fnWrapped = dr => (T)this.session.OnEntityMaterialized(entity, fnProjector(dr));
+                Func<DbEntityProviderBase, DbDataReader, T> fnWrapped = (p, dr) => (T)this.session.OnEntityMaterialized(entity, fnProjector(p, dr));
                 return fnWrapped;
             }
 

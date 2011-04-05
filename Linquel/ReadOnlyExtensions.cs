@@ -12,7 +12,7 @@ namespace IQToolkit
 {
     public static class ReadOnlyExtensions
     {
-        internal static ReadOnlyCollection<T> ToReadOnly<T>(this IEnumerable<T> collection)
+        public static ReadOnlyCollection<T> ToReadOnly<T>(this IEnumerable<T> collection)
         {
             ReadOnlyCollection<T> roc = collection as ReadOnlyCollection<T>;
             if (roc == null)

@@ -128,7 +128,7 @@ namespace IQToolkit.Data
             MappingEntity entity;
 
             public DbBasicEntityTable(DbEntityProvider provider, MappingEntity entity)
-                : base(provider)
+                : base(provider, typeof(IEntityTable<T>))
             {
                 this.entity = entity;
             }
@@ -307,14 +307,22 @@ namespace IQToolkit.Data
             {
                 // compile & return the execution plan so it can be used multiple times
                 LambdaExpression fn = Expression.Lambda(lambda.Type, plan, lambda.Parameters);
+#if NOREFEMIT
+                return ExpressionEvaluator.CreateDelegate(fn);
+#else
                 return fn.Compile();
+#endif
             }
             else
             {
                 // compile the execution plan and invoke it
                 Expression<Func<object>> efn = Expression.Lambda<Func<object>>(Expression.Convert(plan, typeof(object)));
+#if NOREFEMIT
+                return ExpressionEvaluator.Eval(efn, new object[] { });
+#else
                 Func<object> fn = efn.Compile();
                 return fn();
+#endif
             }
         }
 
@@ -333,10 +341,11 @@ namespace IQToolkit.Data
             // translate query into client & server parts
             Expression translation = this.Translate(expression);
 
-            Expression provider = TypedSubtreeFinder.Find(expression, typeof(DbEntityProviderBase));
+            var parameters = lambda != null ? lambda.Parameters : null;
+            Expression provider = this.Find(expression, parameters, typeof(DbEntityProviderBase));
             if (provider == null)
             {
-                Expression rootQueryable = TypedSubtreeFinder.Find(expression, typeof(IQueryable));
+                Expression rootQueryable = this.Find(expression, parameters, typeof(IQueryable));
                 provider = Expression.Convert(
                     Expression.Property(rootQueryable, typeof(IQueryable).GetProperty("Provider")),
                     typeof(DbEntityProviderBase)
@@ -344,6 +353,17 @@ namespace IQToolkit.Data
             }
 
             return this.policy.BuildExecutionPlan(this.Mapping, translation, provider);
+        }
+
+        private Expression Find(Expression expression, IList<ParameterExpression> parameters, Type type)
+        {
+            if (parameters != null)
+            {
+                Expression found = parameters.FirstOrDefault(p => type.IsAssignableFrom(p.Type));
+                if (found != null)
+                    return found;
+            }
+            return TypedSubtreeFinder.Find(expression, type);
         }
 
         /// <summary>
@@ -377,7 +397,7 @@ namespace IQToolkit.Data
         /// </summary>
         /// <param name="expression"></param>
         /// <returns></returns>
-        protected virtual bool CanBeEvaluatedLocally(Expression expression)
+        public override bool CanBeEvaluatedLocally(Expression expression)
         {
             // any operation on a query can't be done locally
             ConstantExpression cex = expression as ConstantExpression;
@@ -431,7 +451,7 @@ namespace IQToolkit.Data
         /// <param name="query"></param>
         /// <param name="paramValues"></param>
         /// <returns></returns>
-        public override IEnumerable<T> Execute<T>(QueryCommand command, Func<DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
+        public override IEnumerable<T> Execute<T>(QueryCommand command, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
         {
             this.LogCommand(command, paramValues);
             this.StartUsingConnection();
@@ -480,13 +500,13 @@ namespace IQToolkit.Data
         /// <param name="reader"></param>
         /// <param name="fnProject"></param>
         /// <returns></returns>
-        protected virtual IEnumerable<T> Project<T>(DbDataReader reader, Func<DbDataReader, T> fnProjector, MappingEntity entity, bool closeReader)
+        protected virtual IEnumerable<T> Project<T>(DbDataReader reader, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, bool closeReader)
         {
             try
             {
                 while (reader.Read())
                 {
-                    yield return fnProjector(reader);
+                    yield return fnProjector(this, reader);
                 }
             }
             finally
@@ -555,7 +575,7 @@ namespace IQToolkit.Data
             }
         }
 
-        public override IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbDataReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream)
+        public override IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream)
         {
             this.StartUsingConnection();
             try
@@ -576,7 +596,7 @@ namespace IQToolkit.Data
             }
         }
 
-        private IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbDataReader, T> fnProjector, MappingEntity entity)
+        private IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity)
         {
             this.LogCommand(query, null);
             DbCommand cmd = this.GetCommand(query, null);
@@ -592,7 +612,7 @@ namespace IQToolkit.Data
                     if (reader.HasRows)
                     {
                         reader.Read();
-                        yield return fnProjector(reader);
+                        yield return fnProjector(this, reader);
                     }
                     else
                     {
@@ -613,7 +633,7 @@ namespace IQToolkit.Data
         /// <param name="query"><  /param>
         /// <param name="paramValues"></param>
         /// <returns></returns>
-        public override IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
+        public override IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues)
         {
             this.LogCommand(query, paramValues);
             this.StartUsingConnection();
@@ -625,7 +645,7 @@ namespace IQToolkit.Data
                 {
                     while (reader.Read())
                     {
-                        yield return fnProjector(reader);
+                        yield return fnProjector(this, reader);
                     }
                 }
                 finally
@@ -776,21 +796,21 @@ namespace IQToolkit.Data
             return (DbEntityProvider)Activator.CreateInstance(this.GetType(), new object[] { connection, mapping, policy });
         }
 
-        public virtual DbEntityProviderBase New(DbConnection connection)
+        public virtual DbEntityProvider New(DbConnection connection)
         {
             var n = New(connection, this.Mapping, this.Policy);
             n.Log = this.Log;
             return n;
         }
 
-        public virtual DbEntityProviderBase New(QueryMapping mapping)
+        public virtual DbEntityProvider New(QueryMapping mapping)
         {
             var n = New(this.Connection, mapping, this.Policy);
             n.Log = this.Log;
             return n;
         }
 
-        public virtual DbEntityProviderBase New(QueryPolicy policy)
+        public virtual DbEntityProvider New(QueryPolicy policy)
         {
             var n = New(this.Connection, this.Mapping, policy);
             n.Log = this.Log;
@@ -834,7 +854,7 @@ namespace IQToolkit.Data
                 }
                 else
                 {
-                    throw new InvalidOperationException(string.Format("Query sessionProvider not specified and cannot be inferred."));
+                    throw new InvalidOperationException(string.Format("Query provider not specified and cannot be inferred."));
                 }
             }
 
@@ -870,16 +890,13 @@ namespace IQToolkit.Data
 
         private static Type GetAdoConnectionType(Type providerType)
         {
-            if (providerType.IsSubclassOf(typeof(DbEntityProvider)))
+            // sniff constructors 
+            foreach (var con in providerType.GetConstructors())
             {
-                // sniff constructors 
-                foreach (var con in providerType.GetConstructors())
+                foreach (var arg in con.GetParameters())
                 {
-                    foreach (var arg in con.GetParameters())
-                    {
-                        if (arg.ParameterType.IsSubclassOf(typeof(DbConnection)))
-                            return arg.ParameterType;
-                    }
+                    if (arg.ParameterType.IsSubclassOf(typeof(DbConnection)))
+                        return arg.ParameterType;
                 }
             }
             return null;
@@ -931,7 +948,7 @@ namespace IQToolkit.Data
             {
                 foreach (var atype in assembly.GetTypes())
                 {
-                    if (string.Compare(atype.Namespace, assemblyName, 0) == 0
+                    if (string.Compare(atype.Namespace, assemblyName, true) == 0
                         && type.IsAssignableFrom(atype))
                     {
                         yield return atype;

@@ -1659,5 +1659,21 @@ namespace Test
                 db.OrderDetails.Where(d => ords.Any(o => o.OrderID == d.OrderID))
                 );
         }
+
+        public void TestLetWithSubquery()
+        {
+            TestQuery(
+                from customer in db.Customers
+                let orders =
+                    from order in db.Orders
+                    where order.CustomerID == customer.CustomerID
+                    select order
+                select new
+                {
+                    Customer = customer,
+                    OrdersCount = orders.Count(),
+                }
+                );
+        }
     }
 }

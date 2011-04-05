@@ -14,7 +14,7 @@ using System.Text;
 namespace IQToolkit.Data.Common
 {
     public class TSqlTypeSystem : QueryTypeSystem
-    {
+    {        
         public override QueryType Parse(string typeDeclaration)
         {
             string[] args = null;
@@ -46,6 +46,13 @@ namespace IQToolkit.Data.Common
                 }
             }
 
+            bool isNotNull = (remainder != null) ? remainder.ToUpper().Contains("NOT NULL") : false;
+
+            return this.GetQueryType(typeName, args, isNotNull);
+        }
+
+        public virtual QueryType GetQueryType(string typeName, string[] args, bool isNotNull)
+        {
             if (String.Compare(typeName, "rowversion", StringComparison.OrdinalIgnoreCase) == 0)
             {
                 typeName = "Timestamp";
@@ -62,8 +69,6 @@ namespace IQToolkit.Data.Common
             }
 
             SqlDbType dbType = this.GetSqlType(typeName);
-
-            bool isNotNull = (remainder != null) ? remainder.ToUpper().Contains("NOT NULL") : false;
 
             int length = 0;
             short precision = 0;
@@ -143,14 +148,24 @@ namespace IQToolkit.Data.Common
             return NewType(dbType, isNotNull, length, precision, scale);
         }
 
-        public virtual QueryType NewType(SqlDbType type, bool isNotNull, int length, short precisions, short scale)
+        public virtual QueryType NewType(SqlDbType type, bool isNotNull, int length, short precision, short scale)
         {
-            return new TSqlType(type, isNotNull, length, precisions, scale);
+            return new TSqlType(type, isNotNull, length, precision, scale);
         }
 
         public virtual SqlDbType GetSqlType(string typeName)
         {
             return (SqlDbType)Enum.Parse(typeof(SqlDbType), typeName, true);
+        }
+
+        public virtual int StringDefaultSize
+        {
+            get { return Int32.MaxValue; }
+        }
+
+        public virtual int BinaryDefaultSize
+        {
+            get { return Int32.MaxValue; }
         }
 
         public override QueryType GetColumnType(Type type)
@@ -177,7 +192,7 @@ namespace IQToolkit.Data.Common
                 case TypeCode.Double:
                     return NewType(SqlDbType.Float, isNotNull, 0, 0, 0);
                 case TypeCode.String:
-                    return NewType(SqlDbType.NVarChar, isNotNull, 2000, 0, 0);
+                    return NewType(SqlDbType.NVarChar, isNotNull, this.StringDefaultSize, 0, 0);
                 case TypeCode.Char:
                     return NewType(SqlDbType.NChar, isNotNull, 1, 0, 0);
                 case TypeCode.DateTime:
@@ -186,7 +201,7 @@ namespace IQToolkit.Data.Common
                     return NewType(SqlDbType.Decimal, isNotNull, 0, 29, 4);
                 default:
                     if (type == typeof(byte[]))
-                        return NewType(SqlDbType.VarBinary, isNotNull, 2000, 0, 0);
+                        return NewType(SqlDbType.VarBinary, isNotNull, this.BinaryDefaultSize, 0, 0);
                     else if (type == typeof(Guid))
                         return NewType(SqlDbType.UniqueIdentifier, isNotNull, 0, 0, 0);
                     else if (type == typeof(DateTimeOffset))
@@ -259,6 +274,23 @@ namespace IQToolkit.Data.Common
                     return DbType.String;
                 default:
                     throw new InvalidOperationException(string.Format("Unhandled sql type: {0}", dbType));
+            }
+        }
+
+        public static bool IsVariableLength(SqlDbType dbType)
+        {
+            switch (dbType)
+            {
+                case SqlDbType.Image:
+                case SqlDbType.NText:
+                case SqlDbType.NVarChar:
+                case SqlDbType.Text:
+                case SqlDbType.VarBinary:
+                case SqlDbType.VarChar:
+                case SqlDbType.Xml:
+                    return true;
+                default:
+                    return false;
             }
         }
 

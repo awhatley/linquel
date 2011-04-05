@@ -238,6 +238,7 @@ namespace IQToolkit.Data.Common
                             existingColumns = newColumns;
                         }
                         string colName = column != null ? column.Name : "c" + iOrdinal;
+                        colName = newColumns.GetAvailableColumnName(colName);
                         newColumns.Add(new ColumnDeclaration(colName, ordering.Expression));
                         expr = new ColumnExpression(expr.Type, null, alias, colName);
                     }

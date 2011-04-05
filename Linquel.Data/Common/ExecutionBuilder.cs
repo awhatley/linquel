@@ -21,7 +21,7 @@ namespace IQToolkit.Data.Common
     {
         QueryPolicy policy;
         QueryMapping mapping;
-        Expression provider;
+        Expression rootProvider;
         Scope scope;
         bool isTop = true;
         MemberInfo receivingMember;
@@ -34,7 +34,7 @@ namespace IQToolkit.Data.Common
         {
             this.mapping = mapping;
             this.policy = policy;
-            this.provider = provider;
+            this.rootProvider = provider;
         }
 
         public static Expression Build(QueryMapping mapping, QueryPolicy policy, Expression expression, Expression provider)
@@ -108,7 +108,7 @@ namespace IQToolkit.Data.Common
 
         private Expression BuildInner(Expression expression)
         {
-            var eb = new ExecutionBuilder(this.mapping, this.policy, this.provider);
+            var eb = new ExecutionBuilder(this.mapping, this.policy, this.rootProvider);
             eb.scope = this.scope;
             eb.receivingMember = this.receivingMember;
             eb.nReaders = this.nReaders;
@@ -237,9 +237,10 @@ namespace IQToolkit.Data.Common
             okayToDefer &= (this.receivingMember != null && this.policy.IsDeferLoaded(this.receivingMember));
 
             var saveScope = this.scope;
+            ParameterExpression provider = Expression.Parameter(typeof(DbEntityProviderBase), "provider");
             ParameterExpression reader = Expression.Parameter(typeof(DbDataReader), "r" + nReaders++);
-            this.scope = new Scope(this.scope, reader, projection.Select.Alias, projection.Select.Columns);
-            LambdaExpression projector = Expression.Lambda(this.Visit(projection.Projector), reader);
+            this.scope = new Scope(this.scope, provider, reader, projection.Select.Alias, projection.Select.Columns);
+            LambdaExpression projector = Expression.Lambda(this.Visit(projection.Projector), provider, reader);
             this.scope = saveScope;
 
             var entity = EntityFinder.Find(projection.Projector);
@@ -249,7 +250,7 @@ namespace IQToolkit.Data.Common
                 : "Execute";
 
             // call low-level execute directly on supplied DbQueryProvider
-            Expression result = Expression.Call(this.provider, methExecute, new Type[] { projector.Body.Type },
+            Expression result = Expression.Call(this.rootProvider, methExecute, new Type[] { projector.Body.Type },
                 Expression.Constant(command),
                 projector,
                 Expression.Constant(entity, typeof(MappingEntity)),
@@ -300,15 +301,16 @@ namespace IQToolkit.Data.Common
             if (projection != null)
             {
                 var saveScope = this.scope;
+                ParameterExpression provider = Expression.Parameter(typeof(DbEntityProviderBase), "provider");
                 ParameterExpression reader = Expression.Parameter(typeof(DbDataReader), "r" + nReaders++);
-                this.scope = new Scope(this.scope, reader, projection.Select.Alias, projection.Select.Columns);
-                LambdaExpression projector = Expression.Lambda(this.Visit(projection.Projector), reader);
+                this.scope = new Scope(this.scope, provider, reader, projection.Select.Alias, projection.Select.Columns);
+                LambdaExpression projector = Expression.Lambda(this.Visit(projection.Projector), provider, reader);
                 this.scope = saveScope;
 
                 var entity = EntityFinder.Find(projection.Projector);
                 command = new QueryCommand(command.CommandText, command.Parameters);
 
-                plan = Expression.Call(this.provider, "ExecuteBatch", new Type[] { projector.Body.Type },
+                plan = Expression.Call(this.rootProvider, "ExecuteBatch", new Type[] { projector.Body.Type },
                     Expression.Constant(command),
                     paramSets,
                     projector,
@@ -319,7 +321,7 @@ namespace IQToolkit.Data.Common
             }
             else
             {
-                plan = Expression.Call(this.provider, "ExecuteBatch", null,
+                plan = Expression.Call(this.rootProvider, "ExecuteBatch", null,
                     Expression.Constant(command),
                     paramSets,
                     batch.BatchSize,
@@ -386,7 +388,7 @@ namespace IQToolkit.Data.Common
                     ifx.IfFalse != null 
                         ? ifx.IfFalse 
                         : ifx.IfTrue.Type == typeof(int) 
-                            ? (Expression)Expression.Property(this.provider, "RowsAffected") 
+                            ? (Expression)Expression.Property(this.rootProvider, "RowsAffected") 
                             : (Expression)Expression.Constant(TypeHelper.GetDefault(ifx.IfTrue.Type), ifx.IfTrue.Type)
                             );
             return this.Visit(test);
@@ -396,7 +398,7 @@ namespace IQToolkit.Data.Common
         {
             if (this.mapping.Language.IsRowsAffectedExpressions(func))
             {
-                return Expression.Property(this.provider, "RowsAffected");
+                return Expression.Property(this.rootProvider, "RowsAffected");
             }
             return base.VisitFunction(func);
         }
@@ -476,7 +478,7 @@ namespace IQToolkit.Data.Common
                 return this.ExecuteProjection(projection, false, qc, values);
             }
 
-            Expression plan = Expression.Call(this.provider, "ExecuteCommand", null,
+            Expression plan = Expression.Call(this.rootProvider, "ExecuteCommand", null,
                 Expression.Constant(qc),
                 Expression.NewArrayInit(typeof(object), values)
                 );
@@ -493,9 +495,10 @@ namespace IQToolkit.Data.Common
         {
             Expression expr = this.Visit(outer.Expression);
             ColumnExpression column = (ColumnExpression)outer.Test;
+            ParameterExpression provider;
             ParameterExpression reader;
             int iOrdinal;
-            if (this.scope.TryGetValue(column, out reader, out iOrdinal))
+            if (this.scope.TryGetValue(column, out provider, out reader, out iOrdinal))
             {
                 return Expression.Condition(
                     Expression.Call(reader, "IsDbNull", null, Expression.Constant(iOrdinal)),
@@ -506,30 +509,24 @@ namespace IQToolkit.Data.Common
             return expr;
         }
 
-        public static T GetValue<T>(DbEntityProviderBase provider, DbDataReader reader, int ordinal)
-        {
-            if (reader.IsDBNull(ordinal))
-            {
-                return default(T);
-            }
-            object value = reader.GetValue(ordinal);
-            Type ttype = typeof(T);
-            Type vtype = value.GetType();
-            if (vtype != ttype)
-            {
-                return (T)provider.Convert(value, ttype);
-            }
-            return (T)value;
-        }
-
         protected override Expression VisitColumn(ColumnExpression column)
         {
+            ParameterExpression provider;
             ParameterExpression reader;
             int iOrdinal;
 
-            if (this.scope != null && this.scope.TryGetValue(column, out reader, out iOrdinal))
+            if (this.scope != null && this.scope.TryGetValue(column, out provider, out reader, out iOrdinal))
             {
-                return Expression.Call(this.GetType(), "GetValue", new Type[] { column.Type }, this.provider, reader, Expression.Constant(iOrdinal));
+                MethodInfo method = FieldReader.GetReaderMethod(column.Type);
+                if (method != null && method.ReturnType != typeof(object))
+                {
+                    return Expression.Call(method, provider, reader, Expression.Constant(iOrdinal));
+                }
+                else
+                {
+                    var args = new Expression[] { provider, reader, Expression.Constant(iOrdinal), Expression.Constant(TypeHelper.GetNonNullableType(column.Type)) };
+                    return Expression.Convert(Expression.Call(typeof(FieldReader), "GetValue", null, args), column.Type);
+                }
             }
             else
             {
@@ -541,28 +538,32 @@ namespace IQToolkit.Data.Common
         class Scope
         {
             Scope outer;
+            ParameterExpression dbProvider;
             ParameterExpression dbDataReader;
             internal TableAlias Alias { get; private set; }
             Dictionary<string, int> nameMap;
 
-            internal Scope(Scope outer, ParameterExpression dbDataReaderParam, TableAlias alias, IEnumerable<ColumnDeclaration> columns)
+            internal Scope(Scope outer, ParameterExpression dbProviderParam, ParameterExpression dbDataReaderParam, TableAlias alias, IEnumerable<ColumnDeclaration> columns)
             {
                 this.outer = outer;
+                this.dbProvider = dbProviderParam;
                 this.dbDataReader = dbDataReaderParam;
                 this.Alias = alias;
                 this.nameMap = columns.Select((c, i) => new { c, i }).ToDictionary(x => x.c.Name, x => x.i);
             }
 
-            internal bool TryGetValue(ColumnExpression column, out ParameterExpression dbDataReader, out int ordinal)
+            internal bool TryGetValue(ColumnExpression column, out ParameterExpression dbProvider, out ParameterExpression dbDataReader, out int ordinal)
             {
                 for (Scope s = this; s != null; s = s.outer)
                 {
                     if (column.Alias == s.Alias && this.nameMap.TryGetValue(column.Name, out ordinal))
                     {
+                        dbProvider = this.dbProvider;
                         dbDataReader = this.dbDataReader;
                         return true;
                     }
                 }
+                dbProvider = null;
                 dbDataReader = null;
                 ordinal = 0;
                 return false;

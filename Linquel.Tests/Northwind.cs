@@ -10,6 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.IO;
+using System.Runtime.Serialization;
 
 namespace Test
 {
@@ -17,13 +18,20 @@ namespace Test
     using IQToolkit.Data;
     using IQToolkit.Data.Mapping;
 
+    [DataContract]
     public class Customer
     {
+        [DataMember]
         public string CustomerID;
+        [DataMember]
         public string ContactName;
+        [DataMember]
         public string CompanyName;
+        [DataMember]
         public string Phone;
+        [DataMember]
         public string City;
+        [DataMember]
         public string Country;
         public List<Order> Orders;
     }
@@ -39,8 +47,8 @@ namespace Test
 
     public class OrderDetail
     {
-        public int? OrderID;
-        public int ProductID;
+        public int? OrderID { get; set; }
+        public int ProductID { get; set; }
         public Product Product;
     }
 

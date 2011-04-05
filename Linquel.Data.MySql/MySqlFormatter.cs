@@ -310,6 +310,55 @@ namespace IQToolkit.Data.MySqlClient
                             return m;
                         }
                         break;
+                    case "AddYears":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL ");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(" YEAR)");
+                        return m;
+                    case "AddMonths":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL ");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(" MONTH)");
+                        return m;
+                    case "AddDays":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL ");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(" DAY)");
+                        return m;
+                    case "AddHours":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL ");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(" HOUR)");
+                        return m;
+                    case "AddMinutes":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL ");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(" MINUTE)");
+                        return m;
+                    case "AddSeconds":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL ");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(" SECOND)");
+                        return m;
+                    case "AddMilliseconds":
+                        this.Write("DATE_ADD(");
+                        this.Visit(m.Object);
+                        this.Write(", INTERVAL (");
+                        this.Visit(m.Arguments[0]);
+                        this.Write("* 1000) MICROSECOND)");
+                        return m;
                 }
             }
             else if (m.Method.DeclaringType == typeof(Decimal))

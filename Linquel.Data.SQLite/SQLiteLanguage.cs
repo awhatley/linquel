@@ -45,6 +45,12 @@ namespace IQToolkit.Data.SQLite
             return new FunctionExpression(typeof(int), "changes()", null);
         }
 
+        public override bool IsRowsAffectedExpressions(Expression expression)
+        {
+            FunctionExpression fex = expression as FunctionExpression;
+            return fex != null && fex.Name == "changes()";
+        }
+
         public override Expression Translate(Expression expression)
         {
             // fix up any order-by's

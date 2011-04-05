@@ -1025,7 +1025,10 @@ namespace IQToolkit.Data.Common
 
         protected override Expression VisitMemberAccess(MemberExpression m)
         {
-            if (m.Expression != null && m.Expression.NodeType == ExpressionType.Parameter && this.IsQuery(m))
+            if (m.Expression != null 
+                && m.Expression.NodeType == ExpressionType.Parameter 
+                && !this.map.ContainsKey((ParameterExpression)m.Expression)
+                && this.IsQuery(m))
             {
                 return this.VisitSequence(this.mapping.GetQueryExpression(this.mapping.GetEntity(m.Member)));
             }

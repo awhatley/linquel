@@ -25,6 +25,8 @@ namespace IQToolkit.Data.Common
         public abstract QueryLanguage Language { get; }
         public abstract QueryPolicy Policy { get; }
         public abstract TextWriter Log { get; set; }
+        public abstract bool CanBeEvaluatedLocally(Expression expression);
+
         public abstract IEntityTable GetTable(MappingEntity entity);
 
         public virtual IEntityTable<T> GetTable<T>(string tableId)
@@ -37,13 +39,14 @@ namespace IQToolkit.Data.Common
             return this.GetTable(this.Mapping.GetEntity(type, tableId));
         }
 
+
         // called from compiled execution plan
         public abstract int RowsAffected { get; }
         public abstract object Convert(object value, Type type);
-        public abstract IEnumerable<T> Execute<T>(QueryCommand command, Func<DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues);
+        public abstract IEnumerable<T> Execute<T>(QueryCommand command, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues);
         public abstract IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream);
-        public abstract IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbDataReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream);
-        public abstract IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues);
+        public abstract IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream);
+        public abstract IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbEntityProviderBase, DbDataReader, T> fnProjector, MappingEntity entity, object[] paramValues);
         public abstract int ExecuteCommand(QueryCommand query, object[] paramValues);
         public abstract int ExecuteCommand(string commandText);
     }

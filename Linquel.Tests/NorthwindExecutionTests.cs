@@ -1099,6 +1099,48 @@ namespace Test
             AssertValue(DayOfWeek.Monday, dow);
         }
 
+        [ExcludeProvider("SQLite")]
+        public void TestDateTimeAddYears()
+        {
+            var od = db.Orders.FirstOrDefault(o => o.OrderDate == new DateTime(1997, 8, 25) && o.OrderDate.AddYears(2).Year == 1999);
+            AssertNotValue(null, od);
+        }
+
+        [ExcludeProvider("SQLite")]
+        public void TestDateTimeAddMonths()
+        {
+            var od = db.Orders.FirstOrDefault(o => o.OrderDate == new DateTime(1997, 8, 25) && o.OrderDate.AddMonths(2).Month == 10);
+            AssertNotValue(null, od);
+        }
+
+        [ExcludeProvider("SQLite")]
+        public void TestDateTimeAddDays()
+        {
+            var od = db.Orders.FirstOrDefault(o => o.OrderDate == new DateTime(1997, 8, 25) && o.OrderDate.AddDays(2).Day == 27);
+            AssertNotValue(null, od);
+        }
+
+        [ExcludeProvider("SQLite")]
+        public void TestDateTimeAddHours()
+        {
+            var od = db.Orders.FirstOrDefault(o => o.OrderDate == new DateTime(1997, 8, 25) && o.OrderDate.AddHours(3).Hour == 3);
+            AssertNotValue(null, od);
+        }
+
+        [ExcludeProvider("SQLite")]
+        public void TestDateTimeAddMinutes()
+        {
+            var od = db.Orders.FirstOrDefault(o => o.OrderDate == new DateTime(1997, 8, 25) && o.OrderDate.AddMinutes(5).Minute == 5);
+            AssertNotValue(null, od);
+        }
+
+        [ExcludeProvider("SQLite")]
+        public void TestDateTimeAddSeconds()
+        {
+            var od = db.Orders.FirstOrDefault(o => o.OrderDate == new DateTime(1997, 8, 25) && o.OrderDate.AddSeconds(6).Second == 6);
+            AssertNotValue(null, od);
+        }
+
         public void TestMathAbs()
         {
             var neg1 = db.Customers.Where(c => c.CustomerID == "ALFKI").Sum(c => Math.Abs((c.CustomerID == "ALFKI") ? -1 : 0));

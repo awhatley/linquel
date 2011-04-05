@@ -19,14 +19,7 @@ namespace IQToolkit
         public static Delegate Compile(LambdaExpression query)
         {
             CompiledQuery cq = new CompiledQuery(query);
-            Type dt = query.Type;
-            MethodInfo method = dt.GetMethod("Invoke", BindingFlags.Instance | BindingFlags.Public);
-            ParameterInfo[] parameters = method.GetParameters();
-            ParameterExpression[] pexprs = parameters.Select(p => Expression.Parameter(p.ParameterType, p.Name)).ToArray();
-            var args = Expression.NewArrayInit(typeof(object), pexprs.Select(p => Expression.Convert(p, typeof(object))).ToArray());
-            Expression body = Expression.Convert(Expression.Call(Expression.Constant(cq), "Invoke", Type.EmptyTypes, args), method.ReturnType);
-            LambdaExpression e = Expression.Lambda(dt, body, pexprs);
-            return e.Compile();
+            return StrongDelegate.CreateDelegate(query.Type, (Func<object[], object>)cq.Invoke);
         }
 
         public static D Compile<D>(Expression<D> query)
@@ -74,6 +67,11 @@ namespace IQToolkit
             internal CompiledQuery(LambdaExpression query)
             {
                 this.query = query;
+            }
+
+            public LambdaExpression Query
+            {
+                get { return this.query; }
             }
 
             internal void Compile(params object[] args)
@@ -131,14 +129,72 @@ namespace IQToolkit
             public object Invoke(object[] args)
             {
                 this.Compile(args);
-                try
+                if (invoker == null)
                 {
-                    return this.fnQuery.DynamicInvoke(args);
+                    invoker = GetInvoker();
                 }
-                catch (TargetInvocationException tie)
+                if (invoker != null)
                 {
-                    throw tie.InnerException;
+                    return invoker(args);
                 }
+                else
+                {
+                    try
+                    {
+                        return this.fnQuery.DynamicInvoke(args);
+                    }
+                    catch (TargetInvocationException tie)
+                    {
+                        throw tie.InnerException;
+                    }
+                }
+            }
+
+            Func<object[], object> invoker;
+            bool checkedForInvoker;
+
+            private Func<object[], object> GetInvoker()
+            {
+                if (this.fnQuery != null && this.invoker != null && !checkedForInvoker)
+                {
+                    this.checkedForInvoker = true;
+                    Type fnType = this.fnQuery.GetType();
+                    if (fnType.FullName.StartsWith("System.Func`"))
+                    {
+                        var typeArgs = fnType.GetGenericArguments();
+                        MethodInfo method = this.GetType().GetMethod("FastInvoke"+typeArgs.Length, BindingFlags.Public|BindingFlags.Instance);
+                        if (method != null)
+                        {
+                            this.invoker = (Func<object[], object>)Delegate.CreateDelegate(typeof(Func<object[], object>), this, method.MakeGenericMethod(typeArgs));
+                        }
+                    }
+                }
+                return this.invoker;
+            }
+
+            public object FastInvoke1<R>(object[] args)
+            {
+                return ((Func<R>)this.fnQuery)();
+            }
+
+            public object FastInvoke2<A1, R>(object[] args)
+            {
+                return ((Func<A1, R>)this.fnQuery)((A1)args[0]);
+            }
+
+            public object FastInvoke3<A1, A2, R>(object[] args)
+            {
+                return ((Func<A1, A2, R>)this.fnQuery)((A1)args[0], (A2)args[1]);
+            }
+
+            public object FastInvoke4<A1, A2, A3, R>(object[] args)
+            {
+                return ((Func<A1, A2, A3, R>)this.fnQuery)((A1)args[0], (A2)args[1], (A3)args[2]);
+            }
+
+            public object FastInvoke5<A1, A2, A3, A4, R>(object[] args)
+            {
+                return ((Func<A1, A2, A3, A4, R>)this.fnQuery)((A1)args[0], (A2)args[1], (A3)args[2], (A4)args[3]);
             }
 
             internal TResult Invoke<TResult>()

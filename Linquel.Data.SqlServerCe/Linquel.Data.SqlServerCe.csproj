@@ -50,6 +50,10 @@
     <Compile Include="SqlCeQueryProvider.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Linquel.Data\Linquel.Data.csproj">
+      <Project>{AACFE85C-B089-42FE-A50F-152E0BAE7BAB}</Project>
+      <Name>Linquel.Data</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Linquel\Linquel.csproj">
       <Project>{77066380-7810-4508-8DFF-42EC85D51330}</Project>
       <Name>Linquel</Name>

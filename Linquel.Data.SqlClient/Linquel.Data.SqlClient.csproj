@@ -43,12 +43,15 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SkipToRowNumberRewriter.cs" />
     <Compile Include="SqlQueryProvider.cs" />
     <Compile Include="TSqlFormatter.cs" />
     <Compile Include="TSqlLanguage.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Linquel.Data\Linquel.Data.csproj">
+      <Project>{AACFE85C-B089-42FE-A50F-152E0BAE7BAB}</Project>
+      <Name>Linquel.Data</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Linquel\Linquel.csproj">
       <Project>{77066380-7810-4508-8DFF-42EC85D51330}</Project>
       <Name>Linquel</Name>

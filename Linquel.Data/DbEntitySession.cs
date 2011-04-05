@@ -61,40 +61,21 @@ namespace IQToolkit.Data
 
         private void DoSubmit()
         {
+            var submitted = new List<TrackedItem>();
+
+            // do all submit actions
             foreach (var item in this.GetOrderedItems())
             {
-                var sessionTable = item.Table;
-                var providerTable = sessionTable.ProviderTable;
-                switch (item.State)
+                if (item.Table.SubmitChanges(item))
                 {
-                    case SubmitAction.Delete:
-                        providerTable.Delete(item.Instance);
-                        sessionTable.RemoveFromCache(item.Instance);
-                        sessionTable.AssignAction(item.Instance, SubmitAction.None);
-                        break;
-                    case SubmitAction.Insert:
-                        providerTable.Insert(item.Instance);
-                        sessionTable.AddToCache(item.Instance);
-                        sessionTable.AssignAction(item.Instance, SubmitAction.PossibleUpdate);
-                        break;
-                    case SubmitAction.InsertOrUpdate:
-                        providerTable.InsertOrUpdate(item.Instance);
-                        sessionTable.AddToCache(item.Instance);
-                        sessionTable.AssignAction(item.Instance, SubmitAction.PossibleUpdate);
-                        break;
-                    case SubmitAction.PossibleUpdate:
-                        if (this.Provider.Mapping.IsModified(item.Entity, item.Instance, item.Original))
-                        {
-                            providerTable.Update(item.Instance);
-                            sessionTable.AssignAction(item.Instance, SubmitAction.PossibleUpdate);
-                        }
-                        break;
-                    case SubmitAction.Update:
-                        providerTable.Update(item.Instance);
-                        break;
-                    default:
-                        break; // do nothing
+                    submitted.Add(item);
                 }
+            }
+
+            // on completion, accept changes
+            foreach (var item in submitted)
+            {
+                item.Table.AcceptChanges(item);
             }
         }
 
@@ -106,14 +87,13 @@ namespace IQToolkit.Data
         interface ITrackedTable : IEntitySessionTable
         {
             object GetFromCacheById(object key);
-            object AddToCache(object instance);
-            void RemoveFromCache(object instance);
-            void AssignAction(object instance, SubmitAction action);
             IEnumerable<TrackedItem> TrackedItems { get; }
             TrackedItem GetTrackedItem(object instance);
+            bool SubmitChanges(TrackedItem item);
+            void AcceptChanges(TrackedItem item);
         }
 
-        protected class TrackedTable<T> : SessionTable<T>, ITrackedTable
+        class TrackedTable<T> : SessionTable<T>, ITrackedTable
         {
             Dictionary<T, TrackedItem> tracked;
             Dictionary<object, T> identityCache;
@@ -145,6 +125,71 @@ namespace IQToolkit.Data
                 return cached;
             }
 
+            private bool SubmitChanges(TrackedItem item)
+            {
+                switch (item.State)
+                {
+                    case SubmitAction.Delete:
+                        this.ProviderTable.Delete(item.Instance);
+                        return true;
+                    case SubmitAction.Insert:
+                        this.ProviderTable.Insert(item.Instance);
+                        return true;
+                    case SubmitAction.InsertOrUpdate:
+                        this.ProviderTable.InsertOrUpdate(item.Instance);
+                        return true;
+                    case SubmitAction.PossibleUpdate:
+                        if (item.Original != null &&
+                            ((DbEntityProviderBase)this.Provider).Mapping.IsModified(item.Entity, item.Instance, item.Original))
+                        {
+                            this.ProviderTable.Update(item.Instance);
+                            return true;
+                        }
+                        break;
+                    case SubmitAction.Update:
+                        this.ProviderTable.Update(item.Instance);
+                        return true;
+                    default:
+                        break; // do nothing
+                }
+                return false;
+            }
+
+            bool ITrackedTable.SubmitChanges(TrackedItem item)
+            {
+                return this.SubmitChanges(item);
+            }
+
+            private void AcceptChanges(TrackedItem item)
+            {
+                switch (item.State)
+                {
+                    case SubmitAction.Delete:
+                        this.RemoveFromCache((T)item.Instance);
+                        this.AssignAction((T)item.Instance, SubmitAction.None);
+                        break;
+                    case SubmitAction.Insert:
+                        this.AddToCache((T)item.Instance);
+                        this.AssignAction((T)item.Instance, SubmitAction.PossibleUpdate);
+                        break;
+                    case SubmitAction.InsertOrUpdate:
+                        this.AddToCache((T)item.Instance);
+                        this.AssignAction((T)item.Instance, SubmitAction.PossibleUpdate);
+                        break;
+                    case SubmitAction.PossibleUpdate:
+                    case SubmitAction.Update:
+                        this.AssignAction((T)item.Instance, SubmitAction.PossibleUpdate);
+                        break;
+                    default:
+                        break; // do nothing
+                }
+            }
+
+            void ITrackedTable.AcceptChanges(TrackedItem item)
+            {
+                this.AcceptChanges(item);
+            }
+
             public override object OnEntityMaterialized(object instance)
             {
                 T typedInstance = (T)instance;
@@ -161,8 +206,17 @@ namespace IQToolkit.Data
                 TrackedItem ti;
                 if (this.tracked.TryGetValue(instance, out ti))
                 {
-                    if (ti.State == SubmitAction.PossibleUpdate && ((DbEntityProviderBase)this.Provider).Mapping.IsModified(ti.Entity, ti.Instance, ti.Original))
-                        return SubmitAction.Update;
+                    if (ti.State == SubmitAction.PossibleUpdate)
+                    {
+                        if (((DbEntityProviderBase)this.Provider).Mapping.IsModified(ti.Entity, ti.Instance, ti.Original))
+                        {
+                            return SubmitAction.Update;
+                        }
+                        else
+                        {
+                            return SubmitAction.None;
+                        }
+                    }
                     return ti.State;
                 }
                 return SubmitAction.None;
@@ -198,20 +252,10 @@ namespace IQToolkit.Data
                 return cached;
             }
 
-            object ITrackedTable.AddToCache(object instance)
-            {
-                return this.AddToCache((T)instance);
-            }
-
             private void RemoveFromCache(T instance)
             {
                 object key = ((DbEntityProviderBase)this.Provider).Mapping.GetPrimaryKey(this.Entity, instance);
                 this.identityCache.Remove(key);
-            }
-
-            void ITrackedTable.RemoveFromCache(object instance)
-            {
-                this.RemoveFromCache((T)instance);
             }
 
             private void AssignAction(T instance, SubmitAction action)
@@ -229,33 +273,24 @@ namespace IQToolkit.Data
                         this.tracked[instance] = new TrackedItem(this, instance, ti != null ? ti.Original : null, action, ti != null ? ti.HookedEvent : false);
                         break;
                     case SubmitAction.PossibleUpdate:
-                        if (ti == null || !ti.HookedEvent)
+                        INotifyPropertyChanging notify = instance as INotifyPropertyChanging;
+                        if (notify != null)
                         {
-                            INotifyPropertyChanging notify = instance as INotifyPropertyChanging;
-                            if (notify != null)
+                            if (!ti.HookedEvent)
                             {
                                 notify.PropertyChanging += new PropertyChangingEventHandler(this.OnPropertyChanging);
-                                this.tracked[instance] = new TrackedItem(this, instance, null, SubmitAction.PossibleUpdate, true);
                             }
-                            else
-                            {
-                                object original = ((DbEntityProviderBase)(this.Provider)).Mapping.CloneEntity(this.Entity, instance);
-                                this.tracked[instance] = new TrackedItem(this, instance, original, SubmitAction.PossibleUpdate, false);
-                            }
+                            this.tracked[instance] = new TrackedItem(this, instance, null, SubmitAction.PossibleUpdate, true);
                         }
                         else
                         {
-                            goto case SubmitAction.Update;
+                            var original = ((DbEntityProviderBase)(this.Provider)).Mapping.CloneEntity(this.Entity, instance);
+                            this.tracked[instance] = new TrackedItem(this, instance, original, SubmitAction.PossibleUpdate, false);
                         }
                         break;
                     default:
                         throw new InvalidOperationException(string.Format("Unknown SubmitAction: {0}", action));
                 }
-            }
-
-            void ITrackedTable.AssignAction(object instance, SubmitAction action)
-            {
-                this.AssignAction((T)instance, action);
             }
 
             protected virtual void OnPropertyChanging(object sender, PropertyChangingEventArgs args)
@@ -321,22 +356,40 @@ namespace IQToolkit.Data
 
         private IEnumerable<TrackedItem> GetOrderedItems()
         {
-            var list = this.GetTables().SelectMany(tab => ((ITrackedTable)tab).TrackedItems).ToList();
-            var edges = this.GetEdges(list).Distinct().ToList();
+            var items = (from tab in this.GetTables()
+                         from ti in ((ITrackedTable)tab).TrackedItems
+                         where ti.State != SubmitAction.None
+                         select ti).ToList();
+
+            // build edge maps to represent all references between entities
+            var edges = this.GetEdges(items).Distinct().ToList();
             var stLookup = edges.ToLookup(e => e.Source, e => e.Target);
             var tsLookup = edges.ToLookup(e => e.Target, e => e.Source);
 
-            return TopologicalSorter.Sort(list, c =>
+            return TopologicalSorter.Sort(items, item =>
             {
-                switch (c.State)
+                switch (item.State)
                 {
                     case SubmitAction.Insert:
                     case SubmitAction.InsertOrUpdate:
                         // all things this instance depends on must come first
-                        return stLookup[c];
+                        var beforeMe = stLookup[item];
+
+                        // if another object exists with same key that is being deleted, then the delete must come before the insert
+                        object cached = item.Table.GetFromCacheById(this.Provider.Mapping.GetPrimaryKey(item.Entity, item.Instance));
+                        if (cached != null && cached != item.Instance)
+                        {
+                            var ti = item.Table.GetTrackedItem(cached);
+                            if (ti != null && ti.State == SubmitAction.Delete)
+                            {
+                                beforeMe = beforeMe.Concat(new[] { ti });
+                            }
+                        }
+                        return beforeMe;
+
                     case SubmitAction.Delete:
                         // all things that depend on this instance must come first
-                        return tsLookup[c];
+                        return tsLookup[item];
                     default:
                         return TrackedItem.EmptyList;
                 }
@@ -367,19 +420,6 @@ namespace IQToolkit.Data
                     if (dc != null)
                     {
                         yield return new Edge(c, dc);
-                    }
-                }
-                // if another object exists with same key that is being deleted, then the inserted object depends on the deleted object 
-                if (c.State == SubmitAction.Insert || c.State == SubmitAction.InsertOrUpdate)
-                {
-                    object cached = c.Table.GetFromCacheById(this.Provider.Mapping.GetPrimaryKey(c.Entity, c.Instance));
-                    if (cached != null && cached != c.Instance)
-                    {
-                        var dc = this.GetTrackedItem(new EntityInfo(cached, c.Entity));
-                        if (dc.State == SubmitAction.Delete)
-                        {
-                            yield return new Edge(c, dc);
-                        }
                     }
                 }
             }

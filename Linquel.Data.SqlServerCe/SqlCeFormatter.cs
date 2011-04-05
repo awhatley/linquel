@@ -252,6 +252,55 @@ namespace IQToolkit.Data.SqlServerCe
                             return m;
                         }
                         break;
+                    case "AddYears":
+                        this.Write("DATEADD(YYYY,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddMonths":
+                        this.Write("DATEADD(MM,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddDays":
+                        this.Write("DATEADD(DAY,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddHours":
+                        this.Write("DATEADD(HH,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddMinutes":
+                        this.Write("DATEADD(MI,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddSeconds":
+                        this.Write("DATEADD(SS,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddMilliseconds":
+                        this.Write("DATEADD(MS,");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
                 }
             }
             else if (m.Method.DeclaringType == typeof(Decimal))

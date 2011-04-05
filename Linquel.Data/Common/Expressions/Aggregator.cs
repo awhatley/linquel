@@ -25,7 +25,6 @@ namespace IQToolkit.Data.Common
         /// <returns></returns>
         public static LambdaExpression GetAggregator(Type expectedType, Type actualType)
         {
-            //Type actualType = typeof(IEnumerable<>).MakeGenericType(elementType);
             Type actualElementType = TypeHelper.GetElementType(actualType);
             if (!expectedType.IsAssignableFrom(actualType))
             {
@@ -36,9 +35,17 @@ namespace IQToolkit.Data.Common
                 {
                     body = Expression.Call(typeof(Enumerable), "SingleOrDefault", new Type[] { actualElementType }, p);
                 }
-                else if (expectedType.IsGenericType && expectedType.GetGenericTypeDefinition() == typeof(IQueryable<>))
+                else if (expectedType.IsGenericType && 
+                    (expectedType == typeof(IQueryable) ||
+                     expectedType == typeof(IOrderedQueryable) ||
+                     expectedType.GetGenericTypeDefinition() == typeof(IQueryable<>) ||
+                     expectedType.GetGenericTypeDefinition() == typeof(IOrderedQueryable<>)))
                 {
                     body = Expression.Call(typeof(Queryable), "AsQueryable", new Type[] { expectedElementType }, CoerceElement(expectedElementType, p));
+                    if (body.Type != expectedType)
+                    {
+                        body = Expression.Convert(body, expectedType);
+                    }
                 }
                 else if (expectedType.IsArray && expectedType.GetArrayRank() == 1)
                 {

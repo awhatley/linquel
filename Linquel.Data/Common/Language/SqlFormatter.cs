@@ -1016,7 +1016,7 @@ namespace IQToolkit.Data.Common
             {
                 this.WriteLine(Indentation.Same);
                 this.Write("WHERE ");
-                this.Visit(update.Where);
+                this.VisitPredicate(update.Where);
             }
             this.HideColumnAliases = saveHide;
             return update;
@@ -1034,7 +1034,7 @@ namespace IQToolkit.Data.Common
             {
                 this.WriteLine(Indentation.Same);
                 this.Write("WHERE ");
-                this.Visit(delete.Where);
+                this.VisitPredicate(delete.Where);
             }
             this.HideTableAliases = saveHideTable;
             this.HideColumnAliases = saveHideColumn;

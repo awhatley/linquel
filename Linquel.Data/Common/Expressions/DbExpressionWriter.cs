@@ -197,6 +197,7 @@ namespace IQToolkit.Data.Common
 
         protected virtual Expression VisitFunction(FunctionExpression function)
         {
+            this.Write("FUNCTION ");
             this.Write(function.Name);
             if (function.Arguments.Count > 0)
             {

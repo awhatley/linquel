@@ -19,20 +19,30 @@ namespace IQToolkit.Data.Common
     {
         ScopedDictionary<TableAlias, TableAlias> aliasScope;
 
-        protected DbExpressionComparer(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope)
-            : base(parameterScope)
+        protected DbExpressionComparer(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, bool exactMatch)
+            : base(parameterScope, exactMatch)
         {
             this.aliasScope = aliasScope;
         }
 
         public new static bool AreEqual(Expression a, Expression b)
         {
-            return AreEqual(null, null, a, b);
+            return AreEqual(null, null, a, b, true);
+        }
+
+        public new static bool AreEqual(Expression a, Expression b, bool exactMatch)
+        {
+            return AreEqual(null, null, a, b, exactMatch);
         }
 
         public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, Expression a, Expression b)
         {
-            return new DbExpressionComparer(parameterScope, aliasScope).Compare(a, b);
+            return new DbExpressionComparer(parameterScope, aliasScope, true).Compare(a, b);
+        }
+
+        public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, Expression a, Expression b, bool exactMatch)
+        {
+            return new DbExpressionComparer(parameterScope, aliasScope, exactMatch).Compare(a, b);
         }
 
         protected override bool Compare(Expression a, Expression b)

@@ -18,11 +18,30 @@ namespace IQToolkit.Data.Access
 
     public class AccessTypeSystem : TSqlTypeSystem
     {
+        public override int StringDefaultSize
+        {
+            get { return 2000; }
+        }
+
+        public override int BinaryDefaultSize
+        {
+            get { return 4000; }
+        }
+
+        public override QueryType GetQueryType(string typeName, string[] args, bool isNotNull)
+        {
+            if (String.Compare(typeName, "Memo", StringComparison.OrdinalIgnoreCase) == 0)
+            {
+                return base.GetQueryType("varchar", new [] {"max"}, isNotNull);
+            }
+            return base.GetQueryType(typeName, args, isNotNull);
+        }
+
         public override SqlDbType GetSqlType(string typeName)
         {
             if (string.Compare(typeName, "Memo", true) == 0)
             {
-                return SqlDbType.Text;
+                return SqlDbType.VarChar;
             }
             else if (string.Compare(typeName, "Currency", true) == 0)
             {

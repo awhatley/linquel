@@ -66,7 +66,12 @@ namespace IQToolkit.Data.SqlClient
             TSqlType sqlType = (TSqlType)parameter.QueryType;
             if (sqlType == null)
                 sqlType = (TSqlType)this.Language.TypeSystem.GetColumnType(parameter.Type);
-            var p = ((SqlCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, sqlType.Length);
+            int len = sqlType.Length;
+            if (len == 0 && TSqlTypeSystem.IsVariableLength(sqlType.SqlDbType))
+            {
+                len = Int32.MaxValue;
+            }
+            var p = ((SqlCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, len);
             if (sqlType.Precision != 0)
                 p.Precision = (byte)sqlType.Precision;
             if (sqlType.Scale != 0)

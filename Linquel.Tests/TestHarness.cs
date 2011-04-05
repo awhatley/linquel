@@ -46,6 +46,8 @@ namespace Test
         bool executeQueries;
         protected MethodInfo currentMethod;
 
+        public static bool WriteOutput = true;
+
         protected TestHarness()
         {
         }
@@ -88,9 +90,15 @@ namespace Test
             int iPassed = 0;
             var failures = new List<TestFailure>();
             ConsoleColor originalColor = Console.ForegroundColor;
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("Running tests: {0}", this.GetType().Name);
-            Console.ForegroundColor = ConsoleColor.Gray;
+            if (WriteOutput)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine("Running tests: {0}", this.GetType().Name);
+                Console.ForegroundColor = ConsoleColor.Gray;
+            }
+
+            var timer = new System.Diagnostics.Stopwatch();
+            timer.Start();
 
             try
             {
@@ -100,8 +108,11 @@ namespace Test
                     currentMethod = method;
                     string testName = method.Name.Substring(4);
                     bool passed = false;
-                    Console.WriteLine();
-                    Console.ForegroundColor = ConsoleColor.Gray;
+                    if (WriteOutput)
+                    {
+                        Console.WriteLine();
+                        Console.ForegroundColor = ConsoleColor.Gray;
+                    }
                     SetupTest();
                     string reason = "";
                     try
@@ -142,10 +153,13 @@ namespace Test
                         failures.Add(new TestFailure { TestName = method.Name, Reason = reason });
                     }
 
-                    Console.ForegroundColor = passed ? ConsoleColor.Green : ConsoleColor.Red;
-                    Console.WriteLine("Test {0}: {1} - {2}", iTest, method.Name, passed ? "PASSED" : "FAILED");
-                    if (!passed && !string.IsNullOrEmpty(reason))
-                        Console.WriteLine("Reason: {0}", reason);
+                    if (WriteOutput)
+                    {
+                        Console.ForegroundColor = passed ? ConsoleColor.Green : ConsoleColor.Red;
+                        Console.WriteLine("Test {0}: {1} - {2}", iTest, method.Name, passed ? "PASSED" : "FAILED");
+                        if (!passed && !string.IsNullOrEmpty(reason))
+                            Console.WriteLine("Reason: {0}", reason);
+                    }
                 }
             }
             finally
@@ -157,10 +171,13 @@ namespace Test
                 }
             }
 
+            timer.Stop();
+
             Console.WriteLine();
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("SUMMARY: {0}", this.GetType().Name);
             Console.WriteLine("Total tests run: {0}", iTest);
+            Console.WriteLine("Total elapsed time: {0}", timer.Elapsed);
 
             Console.ForegroundColor = ConsoleColor.Green;
             if (iPassed == iTest)
@@ -236,6 +253,20 @@ namespace Test
                 XDocument doc = XDocument.Load(filename);
                 this.baselines = doc.Root.Elements("baseline").ToDictionary(e => (string)e.Attribute("key"), e => e.Value);
             }
+        }
+
+        protected double RunTimedTest(int iterations, Action<int> action)
+        {
+            action(0); // throw out the first one  (makes sure code is loaded)
+
+            var timer = new System.Diagnostics.Stopwatch();
+            timer.Start();
+            for (int i = 1; i <= iterations; i++)
+            {
+                action(i);
+            }
+            timer.Stop();
+            return timer.Elapsed.TotalSeconds / iterations;
         }
 
         protected void TestQuery(IQueryable query)

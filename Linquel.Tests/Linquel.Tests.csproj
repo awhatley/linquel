@@ -37,6 +37,7 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Data.SqlServerCe, Version=3.5.1.0, Culture=neutral, PublicKeyToken=89845dcd8080cc91, processorArchitecture=MSIL" />
+    <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -55,6 +56,7 @@
     <Compile Include="NorthwindExecutionTests.cs">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="NorthwindPerfTests.cs" />
     <Compile Include="NorthwindTestHarness.cs">
       <SubType>Code</SubType>
     </Compile>
@@ -84,6 +86,10 @@
     <ProjectReference Include="..\Linquel.Data.SqlServerCe\Linquel.Data.SqlServerCe.csproj">
       <Project>{2D916130-2B32-4AE9-8012-D5A1079368A7}</Project>
       <Name>Linquel.Data.SqlServerCe</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Linquel.Data\Linquel.Data.csproj">
+      <Project>{AACFE85C-B089-42FE-A50F-152E0BAE7BAB}</Project>
+      <Name>Linquel.Data</Name>
     </ProjectReference>
     <ProjectReference Include="..\Linquel\Linquel.csproj">
       <Project>{77066380-7810-4508-8DFF-42EC85D51330}</Project>

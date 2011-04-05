@@ -18,10 +18,17 @@ namespace IQToolkit
     public class ExpressionComparer
     {
         ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope;
+        bool exactMatch;
 
-        protected ExpressionComparer(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope)
+        protected ExpressionComparer(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, bool exactMatch)
         {
             this.parameterScope = parameterScope;
+            this.exactMatch = exactMatch;
+        }
+
+        protected bool ExactMatch
+        {
+            get { return this.exactMatch; }
         }
 
         public static bool AreEqual(Expression a, Expression b)
@@ -29,9 +36,19 @@ namespace IQToolkit
             return AreEqual(null, a, b);
         }
 
+        public static bool AreEqual(Expression a, Expression b, bool exactMatch)
+        {
+            return AreEqual(null, a, b, exactMatch);
+        }
+
         public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, Expression a, Expression b)
         {
-            return new ExpressionComparer(parameterScope).Compare(a, b);
+            return new ExpressionComparer(parameterScope, true).Compare(a, b);
+        }
+
+        public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, Expression a, Expression b, bool exactMatch)
+        {
+            return new ExpressionComparer(parameterScope, exactMatch).Compare(a, b);
         }
 
         protected virtual bool Compare(Expression a, Expression b)
@@ -145,7 +162,14 @@ namespace IQToolkit
 
         protected virtual bool CompareConstant(ConstantExpression a, ConstantExpression b)
         {
-            return object.Equals(a.Value, b.Value);
+            if (this.exactMatch)
+            {
+                return object.Equals(a.Value, b.Value);
+            }
+            else
+            {
+                return a.Type == b.Type;
+            }
         }
 
         protected virtual bool CompareParameter(ParameterExpression a, ParameterExpression b)

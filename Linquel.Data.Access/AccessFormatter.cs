@@ -288,6 +288,65 @@ namespace IQToolkit.Data.Access
 
                 }
             }
+            else if (m.Method.DeclaringType == typeof(DateTime))
+            {
+                switch (m.Method.Name)
+                {
+                    case "op_Subtract":
+                        if (m.Arguments[1].Type == typeof(DateTime))
+                        {
+                            this.Write("DateDiff(\"d\",");
+                            this.Visit(m.Arguments[0]);
+                            this.Write(",");
+                            this.Visit(m.Arguments[1]);
+                            this.Write(")");
+                            return m;
+                        }
+                        break;
+                    case "AddYears":
+                        this.Write("DateAdd(\"yyyy\",");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddMonths":
+                        this.Write("DateAdd(\"m\",");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddDays":
+                        this.Write("DateAdd(\"d\",");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddHours":
+                        this.Write("DateAdd(\"h\",");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddMinutes":
+                        this.Write("DateAdd(\"n\",");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                    case "AddSeconds":
+                        this.Write("DateAdd(\"s\",");
+                        this.Visit(m.Arguments[0]);
+                        this.Write(",");
+                        this.Visit(m.Object);
+                        this.Write(")");
+                        return m;
+                }
+            }
             else if (m.Method.DeclaringType == typeof(Decimal))
             {
                 switch (m.Method.Name)
@@ -569,6 +628,18 @@ namespace IQToolkit.Data.Access
             else
             {
                 return base.GetOperator(methodName);
+            }
+        }
+
+        protected override void WriteValue(object value)
+        {
+            if (value != null && value.GetType() == typeof(bool))
+            {
+                this.Write(((bool)value) ? -1 : 0);
+            }
+            else 
+            {
+                base.WriteValue(value);
             }
         }
     }

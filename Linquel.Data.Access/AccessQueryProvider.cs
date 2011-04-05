@@ -71,13 +71,10 @@ namespace IQToolkit.Data.Access
                 cmd = (OleDbCommand)this.Connection.CreateCommand();
                 cmd.CommandText = query.CommandText;
                 this.SetParameterValues(query, cmd, paramValues);
-                cmd.Prepare();
-                this.commandCache.Add(query, cmd);
                 if (this.Transaction != null)
-                {
-                    cmd = (OleDbCommand)cmd.Clone();
                     cmd.Transaction = (OleDbTransaction)this.Transaction;
-                }
+                cmd.Prepare();                
+                this.commandCache.Add(query, cmd);
             }
             else
             {

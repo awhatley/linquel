@@ -28,13 +28,18 @@ namespace IQToolkit
         Expression expression;
 
         public Query(IQueryProvider provider)
+            : this(provider, null)
+        {
+        }
+
+        public Query(IQueryProvider provider, Type staticType)
         {
             if (provider == null)
             {
                 throw new ArgumentNullException("Provider");
             }
             this.provider = provider;
-            this.expression = Expression.Constant(this);
+            this.expression = staticType != null ? Expression.Constant(this, staticType) : Expression.Constant(this);
         }
 
         public Query(QueryProvider provider, Expression expression)

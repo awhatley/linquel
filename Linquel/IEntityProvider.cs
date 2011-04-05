@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Data.Common;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -16,6 +15,7 @@ namespace IQToolkit
     {
         IEntityTable<T> GetTable<T>(string tableId);
         IEntityTable GetTable(Type type, string tableId);
+        bool CanBeEvaluatedLocally(Expression expression);
     }
 
     public interface IEntityTable : IQueryable, IUpdatable

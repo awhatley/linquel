@@ -15,22 +15,24 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            var provider = DbEntityProvider.From(@"c:\data\Northwind.mdf", "Test.NorthwindWithAttributes");
+            //var provider = DbEntityProvider.From(@"c:\data\Northwind.mdf", "Test.NorthwindWithAttributes");
             //var provider = DbEntityProvider.From(@"c:\data\Northwind.accdb", "Test.NorthwindWithAttributes");
-            //var provider = DbEntityProvider.From(@"c:\data\Northwind.mdb", "Test.NorthwindWithAttributes");
+            var provider = DbEntityProvider.From(@"c:\data\Northwind.mdb", "Test.NorthwindWithAttributes");
             //var provider = DbEntityProvider.From(@"c:\data\Northwind.sdf", "Test.NorthwindWithAttributes");            
             //var provider = DbEntityProvider.From("IQToolkit.Data.MySqlClient", "Northwind", "Test.MySqlNorthwind");
             //var provider = DbEntityProvider.From("IQToolkit.Data.SQLite", @"c:\data\Northwind.db3", "Test.NorthwindWithAttributes");
 
-            provider.Log = Console.Out;
+            //provider.Log = Console.Out;
             provider.Connection.Open();
             try
             {
-                Northwind db = new Northwind(provider);
+                var db = new Northwind(provider);
+
                 //NorthwindTranslationTests.Run(db, true);
                 NorthwindExecutionTests.Run(db);
                 //NorthwindCUDTests.Run(db);
                 //MultiTableTests.Run(new MultiTableContext(provider.New(new AttributeMapping(provider.Language, typeof(MultiTableContext)))));
+                //NorthwindPerfTests.Run(db);
             }
             finally
             {
