@@ -48,10 +48,16 @@ namespace Sample {
                 con.Open();
                 Northwind db = new Northwind(con);
 
-                var query = from c in db.Customers
-                            orderby c.City
-                            where c.Country == "UK"
-                            select new { c.City, c.ContactName };
+                var query = 
+                    from c in db.Customers
+                    join o in db.Orders on c.CustomerID equals o.CustomerID
+                    let m = c.Phone
+                    orderby c.City
+                    where c.Country == "UK"
+                    where m != "555-5555"
+                    select new { c.City, c.ContactName } into x
+                    where x.City == "London"
+                    select x;
 
                 Console.WriteLine(query);
 

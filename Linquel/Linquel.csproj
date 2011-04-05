@@ -45,6 +45,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AliasesProduced.cs" />
     <Compile Include="ColumnProjector.cs" />
     <Compile Include="DbExpressions.cs" />
     <Compile Include="DbQueryProvider.cs" />
@@ -57,8 +58,11 @@
     <Compile Include="QueryBinder.cs" />
     <Compile Include="QueryFormatter.cs" />
     <Compile Include="QueryProvider.cs" />
+    <Compile Include="RedundantSubqueryRemover.cs" />
     <Compile Include="Replacer.cs" />
+    <Compile Include="SubqueryRemover.cs" />
     <Compile Include="TypeSystem.cs" />
+    <Compile Include="UnusedColumnRemover.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

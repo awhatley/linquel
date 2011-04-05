@@ -67,6 +67,8 @@ namespace Sample {
                 expression = Evaluator.PartialEval(expression, CanBeEvaluatedLocally);
                 expression = new QueryBinder(this).Bind(expression);
                 expression = new OrderByRewriter().Rewrite(expression);
+                expression = new UnusedColumnRemover().Remove(expression);
+                expression = new RedundantSubqueryRemover().Remove(expression);
                 projection = (ProjectionExpression)expression;
             }
             string commandText = new QueryFormatter().Format(projection.Source);

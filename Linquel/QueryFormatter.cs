@@ -36,15 +36,22 @@ namespace Sample {
 
         private void AppendNewLine(Indentation style) {
             sb.AppendLine();
-            if (style == Indentation.Inner) {
-                this.depth++;
-            }
-            else if (style == Indentation.Outer) {
-                this.depth--;
-                System.Diagnostics.Debug.Assert(this.depth >= 0);
-            }
+            this.Indent(style);
             for (int i = 0, n = this.depth * this.indent; i < n; i++) {
                 sb.Append(" ");
+            }
+        }
+
+        private void Indent(Indentation style)
+        {
+            if (style == Indentation.Inner)
+            {
+                this.depth++;
+            }
+            else if (style == Indentation.Outer)
+            {
+                this.depth--;
+                System.Diagnostics.Debug.Assert(this.depth >= 0);
             }
         }
 
@@ -219,7 +226,7 @@ namespace Sample {
                 this.AppendNewLine(Indentation.Inner);
                 sb.Append("ON ");
                 this.Visit(join.Condition);
-                this.AppendNewLine(Indentation.Outer);
+                this.Indent(Indentation.Outer);
             }
             return join;
         }

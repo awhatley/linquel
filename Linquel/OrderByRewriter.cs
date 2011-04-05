@@ -15,10 +15,10 @@ namespace Sample {
         IEnumerable<OrderExpression> gatheredOrderings;
         bool isOuterMostSelect;
 
-        public OrderByRewriter() {
+        internal OrderByRewriter() {
         }
 
-        public Expression Rewrite(Expression expression) {
+        internal Expression Rewrite(Expression expression) {
             this.isOuterMostSelect = true;
             return this.Visit(expression);
         }
@@ -150,29 +150,6 @@ namespace Sample {
                 }
             }
             return new BindResult(existingColumns, newOrderings);
-        }
-    }
-
-    /// <summary>
-    ///  returns the set of all aliases produced by a query source
-    /// </summary>
-    internal class AliasesProduced : DbExpressionVisitor {
-        HashSet<string> aliases;
-
-        public HashSet<string> Gather(Expression source) {
-            this.aliases = new HashSet<string>();
-            this.Visit(source);
-            return this.aliases;
-        }
-
-        protected override Expression VisitSelect(SelectExpression select) {
-            this.aliases.Add(select.Alias);
-            return select;
-        }
-
-        protected override Expression VisitTable(TableExpression table) {
-            this.aliases.Add(table.Alias);
-            return table;
         }
     }
 }

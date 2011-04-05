@@ -22,6 +22,7 @@ namespace Sample {
                 case ExpressionType.ArrayLength:
                 case ExpressionType.Quote:
                 case ExpressionType.TypeAs:
+                case ExpressionType.UnaryPlus:
                     return this.VisitUnary((UnaryExpression)exp);
                 case ExpressionType.Add:
                 case ExpressionType.AddChecked:
@@ -46,6 +47,7 @@ namespace Sample {
                 case ExpressionType.RightShift:
                 case ExpressionType.LeftShift:
                 case ExpressionType.ExclusiveOr:
+                case ExpressionType.Power:
                     return this.VisitBinary((BinaryExpression)exp);
                 case ExpressionType.TypeIs:
                     return this.VisitTypeIs((TypeBinaryExpression)exp);
