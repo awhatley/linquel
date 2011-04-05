@@ -49,10 +49,12 @@
     <Compile Include="AliasesProduced.cs" />
     <Compile Include="ColumnProjector.cs" />
     <Compile Include="DbExpressions.cs" />
+    <Compile Include="DbExtensions.cs" />
     <Compile Include="DbQueryProvider.cs" />
     <Compile Include="Evaluator.cs" />
     <Compile Include="ExpressionVisitor.cs" />
     <Compile Include="OrderByRewriter.cs" />
+    <Compile Include="Parameterizer.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ProjectionReader.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -61,7 +63,9 @@
     <Compile Include="QueryProvider.cs" />
     <Compile Include="RedundantSubqueryRemover.cs" />
     <Compile Include="Replacer.cs" />
+    <Compile Include="SkipRewriter.cs" />
     <Compile Include="SubqueryRemover.cs" />
+    <Compile Include="Tests.cs" />
     <Compile Include="TypeSystem.cs" />
     <Compile Include="UnusedColumnRemover.cs" />
   </ItemGroup>

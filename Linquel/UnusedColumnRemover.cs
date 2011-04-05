@@ -58,12 +58,16 @@ namespace Sample
             return column;
         }
 
-        protected override Expression VisitSubquery(SubqueryExpression subquery)
+        protected override Expression VisitSubquery(SubqueryExpression subquery) 
         {
-            System.Diagnostics.Debug.Assert(subquery.Select.Columns.Count == 1);
-            MarkColumnAsUsed(subquery.Select.Alias, subquery.Select.Columns[0].Name);
-            Expression result = base.VisitSubquery(subquery);
-            return result;
+            if ((subquery.NodeType == (ExpressionType)DbExpressionType.Scalar ||
+                subquery.NodeType == (ExpressionType)DbExpressionType.In) &&
+                subquery.Select != null) 
+            {
+                System.Diagnostics.Debug.Assert(subquery.Select.Columns.Count == 1);
+                MarkColumnAsUsed(subquery.Select.Alias, subquery.Select.Columns[0].Name);
+            }
+ 	        return base.VisitSubquery(subquery);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -75,7 +79,7 @@ namespace Sample
             for (int i = 0, n = select.Columns.Count; i < n; i++)
             {
                 ColumnDeclaration decl = select.Columns[i];
-                if (IsColumnUsed(select.Alias, decl.Name))
+                if (select.IsDistinct || IsColumnUsed(select.Alias, decl.Name))
                 {
                     Expression expr = this.Visit(decl.Expression);
                     if (expr != decl.Expression)
@@ -105,6 +109,8 @@ namespace Sample
                 columns = alternate.AsReadOnly();
             }
 
+            Expression take = this.Visit(select.Take);
+            Expression skip = this.Visit(select.Skip);
             ReadOnlyCollection<Expression> groupbys = this.VisitExpressionList(select.GroupBy);
             ReadOnlyCollection<OrderExpression> orderbys = this.VisitOrderBy(select.OrderBy);
             Expression where = this.Visit(select.Where);
@@ -113,12 +119,14 @@ namespace Sample
             ClearColumnsUsed(select.Alias);
 
             if (columns != select.Columns 
+                || take != select.Take 
+                || skip != select.Skip
                 || orderbys != select.OrderBy 
                 || groupbys != select.GroupBy
                 || where != select.Where 
                 || from != select.From)
             {
-                select = new SelectExpression(select.Type, select.Alias, columns, from, where, orderbys, groupbys);
+                select = new SelectExpression(select.Type, select.Alias, columns, from, where, orderbys, groupbys, select.IsDistinct, skip, take);
             }
 
             return select;

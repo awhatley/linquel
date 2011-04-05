@@ -12,7 +12,8 @@ namespace Sample {
     /// Move order-bys to the outermost select
     /// </summary>
     internal class OrderByRewriter : DbExpressionVisitor {
-        IEnumerable<OrderExpression> gatheredOrderings;
+        IList<OrderExpression> gatheredOrderings;
+        HashSet<string> uniqueColumns;
         bool isOuterMostSelect;
 
         private OrderByRewriter() {
@@ -28,20 +29,32 @@ namespace Sample {
             try {
                 this.isOuterMostSelect = false;
                 select = (SelectExpression)base.VisitSelect(select);
+
                 bool hasOrderBy = select.OrderBy != null && select.OrderBy.Count > 0;
+                bool hasGroupBy = select.GroupBy != null && select.GroupBy.Count > 0;
+                bool canHaveOrderBy = saveIsOuterMostSelect || select.Take != null || select.Skip != null;
+                bool canReceiveOrderings = canHaveOrderBy && !hasGroupBy && !select.IsDistinct;
+
                 if (hasOrderBy) {
                     this.PrependOrderings(select.OrderBy);
                 }
-                bool canHaveOrderBy = saveIsOuterMostSelect;
-                bool canPassOnOrderings = !saveIsOuterMostSelect && (select.GroupBy == null || select.GroupBy.Count == 0);
-                IEnumerable<OrderExpression> orderings = (canHaveOrderBy) ? this.gatheredOrderings : null;
+
+                IEnumerable<OrderExpression> orderings = null;
+                if (canReceiveOrderings) {
+                    orderings = this.gatheredOrderings;
+                }
+                else if (canHaveOrderBy) {
+                    orderings = select.OrderBy;
+                }
+                bool canPassOnOrderings = !saveIsOuterMostSelect && !hasGroupBy && !select.IsDistinct;
                 ReadOnlyCollection<ColumnDeclaration> columns = select.Columns;
                 if (this.gatheredOrderings != null) {
                     if (canPassOnOrderings) {
                         HashSet<string> producedAliases = AliasesProduced.Gather(select.From);
                         // reproject order expressions using this select's alias so the outer select will have properly formed expressions
                         BindResult project = this.RebindOrderings(this.gatheredOrderings, select.Alias, producedAliases, select.Columns);
-                        this.gatheredOrderings = project.Orderings;
+                        this.gatheredOrderings = null;
+                        this.PrependOrderings(project.Orderings);
                         columns = project.Columns;
                     }
                     else {
@@ -49,7 +62,7 @@ namespace Sample {
                     }
                 }
                 if (orderings != select.OrderBy || columns != select.Columns) {
-                    select = new SelectExpression(select.Type, select.Alias, columns, select.From, select.Where, orderings, select.GroupBy);
+                    select = new SelectExpression(select.Type, select.Alias, columns, select.From, select.Where, orderings, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
                 }
                 return select;
             }
@@ -70,7 +83,7 @@ namespace Sample {
             // make sure order by expressions lifted up from the left side are not lost
             // when visiting the right side
             Expression left = this.VisitSource(join.Left);
-            IEnumerable<OrderExpression> leftOrders = this.gatheredOrderings;
+            IList<OrderExpression> leftOrders = this.gatheredOrderings;
             this.gatheredOrderings = null; // start on the right with a clean slate
             Expression right = this.VisitSource(join.Right);
             this.PrependOrderings(leftOrders);
@@ -86,17 +99,26 @@ namespace Sample {
         /// to give precedence to the new expressions over any previous expressions
         /// </summary>
         /// <param name="newOrderings"></param>
-        protected void PrependOrderings(IEnumerable<OrderExpression> newOrderings) {
+        protected void PrependOrderings(IList<OrderExpression> newOrderings) {
             if (newOrderings != null) {
                 if (this.gatheredOrderings == null) {
-                    this.gatheredOrderings = newOrderings;
-                }
-                else {
-                    List<OrderExpression> list = this.gatheredOrderings as List<OrderExpression>;
-                    if (list == null) {
-                        this.gatheredOrderings = list = new List<OrderExpression>(this.gatheredOrderings);
+                    this.gatheredOrderings = new List<OrderExpression>();
+                    this.uniqueColumns = new HashSet<string>();
+                }                
+                for (int i = newOrderings.Count - 1; i >= 0; i--) {
+                    var ordering = newOrderings[i];
+                    ColumnExpression column = ordering.Expression as ColumnExpression;
+                    if (column != null) {
+                        string hash = column.Alias + ":" + column.Name;
+                        if (!this.uniqueColumns.Contains(hash)) {
+                            this.gatheredOrderings.Insert(0, ordering);
+                            this.uniqueColumns.Add(hash);
+                        }
                     }
-                    list.InsertRange(0, newOrderings);
+                    else {
+                        // unless we have full expression tree matching assume its different
+                        this.gatheredOrderings.Insert(0, ordering);
+                    }
                 }
             }
         }

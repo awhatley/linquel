@@ -18,10 +18,15 @@ namespace Sample {
         Projection,
         Join,
         Aggregate,
-        Subquery,
+        Scalar,
+        Exists,
+        In,
         Grouping,
         AggregateSubquery,
-        IsNull
+        IsNull,
+        Between,
+        RowCount,
+        NamedValue
     }
 
     internal static class DbExpressionExtensions {
@@ -118,10 +123,13 @@ namespace Sample {
     internal class SelectExpression : Expression {
         string alias;
         ReadOnlyCollection<ColumnDeclaration> columns;
+        bool isDistinct;
         Expression from;
         Expression where;
         ReadOnlyCollection<OrderExpression> orderBy;
         ReadOnlyCollection<Expression> groupBy;
+        Expression take;
+        Expression skip;
 
         internal SelectExpression(
             Type type, 
@@ -129,15 +137,18 @@ namespace Sample {
             IEnumerable<ColumnDeclaration> columns, 
             Expression from, 
             Expression where, 
-            IEnumerable<OrderExpression> orderBy,
-            IEnumerable<Expression> groupBy
-            )
+            IEnumerable<OrderExpression> orderBy, 
+            IEnumerable<Expression> groupBy, 
+            bool isDistinct, 
+            Expression skip, 
+            Expression take)
             : base((ExpressionType)DbExpressionType.Select, type) {
             this.alias = alias;
             this.columns = columns as ReadOnlyCollection<ColumnDeclaration>;
             if (this.columns == null) {
                 this.columns = new List<ColumnDeclaration>(columns).AsReadOnly();
             }
+            this.isDistinct = isDistinct;
             this.from = from;
             this.where = where;
             this.orderBy = orderBy as ReadOnlyCollection<OrderExpression>;
@@ -148,6 +159,20 @@ namespace Sample {
             if (this.groupBy == null && groupBy != null) {
                 this.groupBy = new List<Expression>(groupBy).AsReadOnly();
             }
+            this.take = take;
+            this.skip = skip;
+        }
+        internal SelectExpression(
+            Type type, 
+            string alias, 
+            IEnumerable<ColumnDeclaration> columns, 
+            Expression from, 
+            Expression where, 
+            IEnumerable<OrderExpression> orderBy,
+            IEnumerable<Expression> groupBy
+            )
+            : this(type, alias, columns, from, where, orderBy, groupBy, false, null, null)
+        {
         }
         internal SelectExpression(
             Type type, string alias, IEnumerable<ColumnDeclaration> columns, 
@@ -173,6 +198,15 @@ namespace Sample {
         internal ReadOnlyCollection<Expression> GroupBy {
             get { return this.groupBy; }
         }
+        internal bool IsDistinct {
+            get { return this.isDistinct; }
+        }
+        internal Expression Skip {
+            get { return this.skip; }
+        }
+        internal Expression Take {
+            get { return this.take; }
+        }
     }
 
     /// <summary>
@@ -182,6 +216,7 @@ namespace Sample {
         CrossJoin,
         InnerJoin,
         CrossApply,
+        LeftOuter
     }
 
     /// <summary>
@@ -213,14 +248,50 @@ namespace Sample {
         }
     }
 
-    internal class SubqueryExpression : Expression {
+    internal abstract class SubqueryExpression : Expression {
         SelectExpression select;
-        internal SubqueryExpression(Type type, SelectExpression select)
-            : base((ExpressionType)DbExpressionType.Subquery, type) {
+        protected SubqueryExpression(DbExpressionType eType, Type type, SelectExpression select)
+            : base((ExpressionType)eType, type) {
+            System.Diagnostics.Debug.Assert(eType == DbExpressionType.Scalar || eType == DbExpressionType.Exists || eType == DbExpressionType.In);
             this.select = select;
         }
         internal SelectExpression Select {
             get { return this.select; }
+        }
+    }
+
+    internal class ScalarExpression : SubqueryExpression {
+        internal ScalarExpression(Type type, SelectExpression select)
+            : base(DbExpressionType.Scalar, type, select) {
+        }
+    }
+
+    internal class ExistsExpression : SubqueryExpression {
+        internal ExistsExpression(SelectExpression select)
+            : base(DbExpressionType.Exists, typeof(bool), select) {
+        }
+    }
+
+    internal class InExpression : SubqueryExpression {
+        Expression expression;
+        ReadOnlyCollection<Expression> values;  // either select or expressions are assigned
+        internal InExpression(Expression expression, SelectExpression select) 
+            : base(DbExpressionType.In, typeof(bool), select) {
+            this.expression = expression;
+        }
+        internal InExpression(Expression expression, IEnumerable<Expression> values)
+            : base(DbExpressionType.In, typeof(bool), null) {
+            this.expression = expression;
+            this.values = values as ReadOnlyCollection<Expression>;
+            if (this.values == null && values != null) {
+                this.values = new List<Expression>(values).AsReadOnly();
+            }
+        }
+        internal Expression Expression {
+            get { return this.expression; }
+        }
+        internal ReadOnlyCollection<Expression> Values {
+            get { return this.values; }
         }
     }
 
@@ -235,10 +306,12 @@ namespace Sample {
     internal class AggregateExpression : Expression {
         AggregateType aggType;
         Expression argument;
-        internal AggregateExpression(Type type, AggregateType aggType, Expression argument) 
+        bool isDistinct;
+        internal AggregateExpression(Type type, AggregateType aggType, Expression argument, bool isDistinct) 
             : base((ExpressionType)DbExpressionType.Aggregate, type) {
             this.aggType = aggType;
             this.argument = argument;
+            this.isDistinct = isDistinct;
         }
         internal AggregateType AggregateType {
             get { return this.aggType; }
@@ -246,13 +319,16 @@ namespace Sample {
         internal Expression Argument {
             get { return this.argument; }
         }
+        internal bool IsDistinct {
+            get { return this.isDistinct; }
+        }
     }
 
     internal class AggregateSubqueryExpression : Expression {
         string groupByAlias;
         Expression aggregateInGroupSelect;
-        SubqueryExpression aggregateAsSubquery;
-        internal AggregateSubqueryExpression(string groupByAlias, Expression aggregateInGroupSelect, SubqueryExpression aggregateAsSubquery)
+        ScalarExpression aggregateAsSubquery;
+        internal AggregateSubqueryExpression(string groupByAlias, Expression aggregateInGroupSelect, ScalarExpression aggregateAsSubquery)
             : base((ExpressionType)DbExpressionType.AggregateSubquery, aggregateAsSubquery.Type)
         {
             this.aggregateInGroupSelect = aggregateInGroupSelect;
@@ -261,9 +337,12 @@ namespace Sample {
         }
         internal string GroupByAlias { get { return this.groupByAlias; } }
         internal Expression AggregateInGroupSelect { get { return this.aggregateInGroupSelect; } }
-        internal SubqueryExpression AggregateAsSubquery { get { return this.aggregateAsSubquery; } }
+        internal ScalarExpression AggregateAsSubquery { get { return this.aggregateAsSubquery; } }
     }
 
+    /// <summary>
+    /// Allows is-null tests against value-types like int and float
+    /// </summary>
     internal class IsNullExpression : Expression {
         Expression expression;
         internal IsNullExpression(Expression expression) 
@@ -272,6 +351,57 @@ namespace Sample {
         }
         internal Expression Expression {
             get { return this.expression; }
+        }
+    }
+
+    internal class BetweenExpression : Expression {
+        Expression expression;
+        Expression lower;
+        Expression upper;
+        internal BetweenExpression(Expression expression, Expression lower, Expression upper)
+            : base ((ExpressionType)DbExpressionType.Between, expression.Type) {
+            this.expression = expression;
+            this.lower = lower;
+            this.upper = upper;
+        }
+        internal Expression Expression {
+            get { return this.expression; }
+        }
+        internal Expression Lower {
+            get { return this.lower; }
+        }
+        internal Expression Upper {
+            get { return this.upper; }
+        }
+    }
+
+    internal class RowNumberExpression : Expression {
+        ReadOnlyCollection<OrderExpression> orderBy;
+        internal RowNumberExpression(IEnumerable<OrderExpression> orderBy)
+            : base ((ExpressionType)DbExpressionType.RowCount, typeof(int)) {
+            this.orderBy = orderBy as ReadOnlyCollection<OrderExpression>;
+            if (this.orderBy == null && orderBy != null) {
+                this.orderBy = new List<OrderExpression>(orderBy).AsReadOnly();
+            }
+        }
+        internal ReadOnlyCollection<OrderExpression> OrderBy {
+            get { return this.orderBy; }
+        }
+    }
+
+    internal class NamedValueExpression : Expression {
+        string name;
+        Expression value;
+        internal NamedValueExpression(string name, Expression value)
+            : base((ExpressionType)DbExpressionType.NamedValue, value.Type) {
+            this.name = name;
+            this.value = value;
+        }
+        internal string Name {
+            get { return this.name; }
+        }
+        internal Expression Value {
+            get { return this.value; }
         }
     }
 
@@ -287,7 +417,7 @@ namespace Sample {
             : this (source, projector, null) {
         }
         internal ProjectionExpression(SelectExpression source, Expression projector, LambdaExpression aggregator)
-            : base((ExpressionType)DbExpressionType.Projection, source.Type) {
+            : base((ExpressionType)DbExpressionType.Projection, aggregator != null ? aggregator.Body.Type : typeof(IEnumerable<>).MakeGenericType(projector.Type)) {
             this.source = source;
             this.projector = projector;
             this.aggregator = aggregator;
@@ -322,14 +452,22 @@ namespace Sample {
                     return this.VisitJoin((JoinExpression)exp);
                 case DbExpressionType.Aggregate:
                     return this.VisitAggregate((AggregateExpression)exp);
-                case DbExpressionType.Subquery:
+                case DbExpressionType.Scalar:
+                case DbExpressionType.Exists:
+                case DbExpressionType.In:
                     return this.VisitSubquery((SubqueryExpression)exp);
                 case DbExpressionType.AggregateSubquery:
                     return this.VisitAggregateSubquery((AggregateSubqueryExpression)exp);
                 case DbExpressionType.IsNull:
                     return this.VisitIsNull((IsNullExpression)exp);
+                case DbExpressionType.Between:
+                    return this.VisitBetween((BetweenExpression)exp);
+                case DbExpressionType.RowCount:
+                    return this.VisitRowNumber((RowNumberExpression)exp);
                 case DbExpressionType.Projection:
                     return this.VisitProjection((ProjectionExpression)exp);
+                case DbExpressionType.NamedValue:
+                    return this.VisitNamedValue((NamedValueExpression)exp);
                 default:
                     return base.Visit(exp);
             }
@@ -343,16 +481,21 @@ namespace Sample {
         protected virtual Expression VisitSelect(SelectExpression select) {
             Expression from = this.VisitSource(select.From);
             Expression where = this.Visit(select.Where);
-            ReadOnlyCollection<ColumnDeclaration> columns = this.VisitColumnDeclarations(select.Columns);
             ReadOnlyCollection<OrderExpression> orderBy = this.VisitOrderBy(select.OrderBy);
             ReadOnlyCollection<Expression> groupBy = this.VisitExpressionList(select.GroupBy);
+            Expression skip = this.Visit(select.Skip);
+            Expression take = this.Visit(select.Take);
+            ReadOnlyCollection<ColumnDeclaration> columns = this.VisitColumnDeclarations(select.Columns);
             if (from != select.From 
                 || where != select.Where 
-                || columns != select.Columns 
                 || orderBy != select.OrderBy
                 || groupBy != select.GroupBy
-                ) {
-                return new SelectExpression(select.Type, select.Alias, columns, from, where, orderBy, groupBy);
+                || take != select.Take 
+                || skip != select.Skip
+                || columns != select.Columns
+                )
+            {
+                return new SelectExpression(select.Type, select.Alias, columns, from, where, orderBy, groupBy, select.IsDistinct, skip, take);
             }
             return select;
         }
@@ -368,7 +511,7 @@ namespace Sample {
         protected virtual Expression VisitAggregate(AggregateExpression aggregate) {
             Expression arg = this.Visit(aggregate.Argument);
             if (arg != aggregate.Argument) {
-                return new AggregateExpression(aggregate.Type, aggregate.AggregateType, arg);
+                return new AggregateExpression(aggregate.Type, aggregate.AggregateType, arg, aggregate.IsDistinct);
             }
             return aggregate;
         }
@@ -379,17 +522,74 @@ namespace Sample {
             }
             return isnull;
         }
+        protected virtual Expression VisitBetween(BetweenExpression between) {
+            Expression expr = this.Visit(between.Expression);
+            Expression lower = this.Visit(between.Lower);
+            Expression upper = this.Visit(between.Upper);
+            if (expr != between.Expression || lower != between.Lower || upper != between.Upper) {
+                return new BetweenExpression(expr, lower, upper);
+            }
+            return between;
+        }
+        protected virtual Expression VisitRowNumber(RowNumberExpression rowNumber) {
+            var orderby = this.VisitOrderBy(rowNumber.OrderBy);
+            if (orderby != rowNumber.OrderBy) {
+                return new RowNumberExpression(orderby);
+            }
+            return rowNumber;
+        }
+        protected virtual Expression VisitNamedValue(NamedValueExpression value) {
+            return value;
+        }
         protected virtual Expression VisitSubquery(SubqueryExpression subquery) {
-            SelectExpression select = (SelectExpression)this.Visit(subquery.Select);
-            if (select != subquery.Select) {
-                return new SubqueryExpression(subquery.Type, select);
+            switch ((DbExpressionType)subquery.NodeType) {
+                case DbExpressionType.Scalar:
+                    return this.VisitScalar((ScalarExpression)subquery);
+                case DbExpressionType.Exists:
+                    return this.VisitExists((ExistsExpression)subquery);
+                case DbExpressionType.In:
+                    return this.VisitIn((InExpression)subquery);
             }
             return subquery;
         }
+
+        protected virtual Expression VisitScalar(ScalarExpression scalar) {
+            SelectExpression select = (SelectExpression)this.Visit(scalar.Select);
+            if (select != scalar.Select) {
+                return new ScalarExpression(scalar.Type, select);
+            }
+            return scalar;
+        }
+
+        protected virtual Expression VisitExists(ExistsExpression exists) {
+            SelectExpression select = (SelectExpression)this.Visit(exists.Select);
+            if (select != exists.Select) {
+                return new ExistsExpression(select);
+            }
+            return exists;
+        }
+
+        protected virtual Expression VisitIn(InExpression @in) {
+            Expression expr = this.Visit(@in.Expression);
+            if (@in.Select != null) {
+                SelectExpression select = (SelectExpression)this.Visit(@in.Select);
+                if (expr != @in.Expression || select != @in.Select) {
+                    return new InExpression(expr, select);
+                }
+            } 
+            else {
+                IEnumerable<Expression> values = this.VisitExpressionList(@in.Values);
+                if (expr != @in.Expression || values != @in.Values) {
+                    return new InExpression(expr, values);
+                }
+            }
+            return @in;
+        }
+
         protected virtual Expression VisitAggregateSubquery(AggregateSubqueryExpression aggregate) {
             Expression e = this.Visit(aggregate.AggregateAsSubquery);
-            System.Diagnostics.Debug.Assert(e is SubqueryExpression);
-            SubqueryExpression subquery = (SubqueryExpression)e;
+            System.Diagnostics.Debug.Assert(e is ScalarExpression);
+            ScalarExpression subquery = (ScalarExpression)e;
             if (subquery != aggregate.AggregateAsSubquery) {
                 return new AggregateSubqueryExpression(aggregate.GroupByAlias, aggregate.AggregateInGroupSelect, subquery);
             }

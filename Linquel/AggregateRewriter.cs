@@ -31,7 +31,7 @@ namespace Sample {
                     this.map.Add(ae, new ColumnExpression(ae.Type, ae.GroupByAlias, name));
                     aggColumns.Add(cd);
                 }
-                return new SelectExpression(select.Type, select.Alias, aggColumns, select.From, select.Where, select.OrderBy, select.GroupBy);
+                return new SelectExpression(select.Type, select.Alias, aggColumns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take);
             }
             return select;
         }

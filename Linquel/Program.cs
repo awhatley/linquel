@@ -29,6 +29,7 @@ namespace Sample {
         public Query<Orders> Orders;
 
         private DbQueryProvider provider;
+
         public Northwind(DbConnection connection) {
             this.provider = new DbQueryProvider(connection);
             this.Customers = new Query<Customers>(this.provider);
@@ -39,32 +40,43 @@ namespace Sample {
             get { return this.provider.Log; }
             set { this.provider.Log = value; }
         }
+
+        public D Compile<D>(Expression<D> query) {
+            return (D)this.provider.Execute(query);
+        }
+
+        public Func<T> Compile<T>(Expression<Func<T>> query) {
+            return (Func<T>)this.provider.Execute(query);
+        }
+
+        public Func<T1, T2> Compile<T1,T2>(Expression<Func<T1, T2>> query) {
+            return (Func<T1, T2>)this.provider.Execute(query);
+        }
+
+        public Func<T1, T2, T3> Compile<T1, T2, T3>(Expression<Func<T1, T2, T3>> query) {
+            return (Func<T1, T2, T3>)this.provider.Execute(query);
+        }
+
+        public Func<T1, T2, T3, T4> Compile<T1, T2, T3, T4>(Expression<Func<T1, T2, T3, T4>> query) {
+            return (Func<T1, T2, T3, T4>)this.provider.Execute(query);
+        }
     }
 
     class Program {
         static void Main(string[] args) {
             string constr = @"Data Source=.\SQLEXPRESS;AttachDbFilename=C:\data\Northwind.mdf;Integrated Security=True;Connect Timeout=30;User Instance=True;MultipleActiveResultSets=true";
+
             using (SqlConnection con = new SqlConnection(constr)) {
                 con.Open();
-                Northwind db = new Northwind(con);
 
+                Northwind db = new Northwind(con);
                 db.Log = Console.Out;
 
-                var query = from o in db.Orders
-                            group o by o.CustomerID into g
-                            select new { 
-                                Customer = g.Key, 
-                                Total = g.Sum(o => o.OrderID), 
-                                Min = g.Min(o => o.OrderID), 
-                                Avg = g.Average(o => o.OrderID) 
-                            };
-
-                foreach (var item in query) {
-                    Console.WriteLine(item);
-                }
-
-                Console.ReadLine();
+                NorthwindTranslationTests.Run(db, true);
+                NorthwindExecutionTests.Run(db);
             }
+
+            Console.ReadLine();
         }
     }
 }

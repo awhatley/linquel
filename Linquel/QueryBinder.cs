@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -32,7 +33,8 @@ namespace Sample {
         private bool CanBeColumn(Expression expression) {
             switch (expression.NodeType) {
                 case (ExpressionType)DbExpressionType.Column:
-                case (ExpressionType)DbExpressionType.Subquery:
+                case (ExpressionType)DbExpressionType.Scalar:
+                case (ExpressionType)DbExpressionType.Exists:
                 case (ExpressionType)DbExpressionType.AggregateSubquery:
                 case (ExpressionType)DbExpressionType.Aggregate:
                     return true;
@@ -48,8 +50,8 @@ namespace Sample {
             return e;
         }
 
-        private string GetNextAlias() {
-            return "t" + (aliasCount++);
+        internal string GetNextAlias() {
+            return "t" + (this.aliasCount++);
         }
 
         private ProjectedColumns ProjectColumns(Expression expression, string newAlias, params string[] existingAliases) {
@@ -57,8 +59,7 @@ namespace Sample {
         }
 
         protected override Expression VisitMethodCall(MethodCallExpression m) {
-            if (m.Method.DeclaringType == typeof(Queryable) ||
-                m.Method.DeclaringType == typeof(Enumerable)) {
+            if (m.Method.DeclaringType == typeof(Queryable) || m.Method.DeclaringType == typeof(Enumerable)) {
                 switch (m.Method.Name) {
                     case "Where":
                         return this.BindWhere(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]));
@@ -105,12 +106,16 @@ namespace Sample {
                                 );
                         }
                         else if (m.Arguments.Count == 3) {
-                            return this.BindGroupBy(
-                                m.Arguments[0],
-                                (LambdaExpression)StripQuotes(m.Arguments[1]),
-                                (LambdaExpression)StripQuotes(m.Arguments[2]),
-                                null
-                                );
+                            LambdaExpression lambda1 = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                            LambdaExpression lambda2 = (LambdaExpression)StripQuotes(m.Arguments[2]);
+                            if (lambda2.Parameters.Count == 1) {
+                                // second lambda is element selector
+                                return this.BindGroupBy(m.Arguments[0], lambda1, lambda2, null);
+                            }
+                            else if (lambda2.Parameters.Count == 2) {
+                                // second lambda is result selector
+                                return this.BindGroupBy(m.Arguments[0], lambda1, null, lambda2);
+                            }
                         }
                         else if (m.Arguments.Count == 4) {
                             return this.BindGroupBy(
@@ -134,13 +139,61 @@ namespace Sample {
                             return this.BindAggregate(m.Arguments[0], m.Method, selector, m == this.root);
                         }
                         break;
+                    case "Distinct":
+                        if (m.Arguments.Count == 1) {
+                            return this.BindDistinct(m.Arguments[0]);
+                        }
+                        break;
+                    case "Skip":
+                        if (m.Arguments.Count == 2) {
+                            return this.BindSkip(m.Arguments[0], m.Arguments[1]);
+                        }
+                        break;
+                    case "Take":
+                        if (m.Arguments.Count == 2) {
+                            return this.BindTake(m.Arguments[0], m.Arguments[1]);
+                        }
+                        break;  
+                    case "First":
+                    case "FirstOrDefault":
+                    case "Single":
+                    case "SingleOrDefault":
+                        if (m.Arguments.Count == 1) {
+                            return this.BindFirst(m.Arguments[0], null, m.Method.Name, m == this.root);
+                        }
+                        else if (m.Arguments.Count == 2) {
+                            LambdaExpression predicate = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                            return this.BindFirst(m.Arguments[0], predicate, m.Method.Name, m == this.root);
+                        }
+                        break;
+                    case "Any":
+                        if (m.Arguments.Count == 1) {
+                            return this.BindAnyAll(m.Arguments[0], m.Method, null, m == this.root);
+                        }
+                        else if (m.Arguments.Count == 2) {
+                            LambdaExpression predicate = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                            return this.BindAnyAll(m.Arguments[0], m.Method, predicate, m == this.root);
+                        } 
+                        break;
+                    case "All":
+                        if (m.Arguments.Count == 2) {
+                            LambdaExpression predicate = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                            return this.BindAnyAll(m.Arguments[0], m.Method, predicate, m == this.root);
+                        } 
+                        break;
+                    case "Contains":
+                        if (m.Arguments.Count == 2) {
+                            return this.BindContains(m.Arguments[0], m.Arguments[1], m == this.root);
+                        }
+                        break;
                 }
             }
             return base.VisitMethodCall(m);
         }
 
         private ProjectionExpression VisitSequence(Expression source) {
-            return this.ConvertToSequence(this.Visit(source));
+            // sure to call base.Visit in order to skip my override
+            return this.ConvertToSequence(base.Visit(source));
         }
 
         private ProjectionExpression ConvertToSequence(Expression expr) {
@@ -156,6 +209,47 @@ namespace Sample {
                 default:
                     throw new Exception(string.Format("The expression of type '{0}' is not a sequence", expr.Type));
             }
+        }
+
+        protected override Expression Visit(Expression exp) {
+            Expression result =  base.Visit(exp);
+
+            if (result != null) {
+                // bindings that expect projections should have called VisitSequence, the rest will probably get annoyed if
+                // the projection does not have the expected type.
+                Type expectedType = exp.Type;
+                ProjectionExpression projection = result as ProjectionExpression;
+                if (projection != null && projection.Aggregator == null && !expectedType.IsAssignableFrom(projection.Type)) {
+                    LambdaExpression aggregator = GetAggregator(expectedType, projection.Projector);
+                    if (aggregator != null) {
+                        return new ProjectionExpression(projection.Source, projection.Projector, aggregator);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static LambdaExpression GetAggregator(Type expectedType, Expression projector) {
+            Type elementType = projector.Type;
+            Type actualType = typeof(IEnumerable<>).MakeGenericType(elementType);
+            if (!expectedType.IsAssignableFrom(actualType)) {
+                ParameterExpression p = Expression.Parameter(actualType, "p");
+                Expression body = null;
+                if (expectedType.IsGenericType && expectedType.GetGenericTypeDefinition() == typeof(IQueryable<>)) {
+                    body = Expression.Call(typeof(Queryable), "AsQueryable", new Type[] { elementType }, p);
+                }
+                else if (expectedType.IsArray && expectedType.GetArrayRank() == 1) {
+                    body = Expression.Call(typeof(Enumerable), "ToArray", new Type[] { elementType }, p);
+                }
+                else if (typeof(IList).IsAssignableFrom(expectedType)) {
+                    body = Expression.Call(typeof(Enumerable), "ToList", new Type[] { elementType }, p);
+                }
+                if (body != null) {
+                    return Expression.Lambda(body, p);
+                }
+            }
+            return null;
         }
 
         private Expression BindWhere(Type resultType, Expression source, LambdaExpression predicate) {
@@ -185,7 +279,7 @@ namespace Sample {
         protected virtual Expression BindSelectMany(Type resultType, Expression source, LambdaExpression collectionSelector, LambdaExpression resultSelector) {
             ProjectionExpression projection = this.VisitSequence(source);
             this.map[collectionSelector.Parameters[0]] = projection.Projector;
-            ProjectionExpression collectionProjection = (ProjectionExpression)this.Visit(collectionSelector.Body);
+            ProjectionExpression collectionProjection = (ProjectionExpression)this.VisitSequence(collectionSelector.Body);
             JoinType joinType = IsTable(collectionSelector.Body) ? JoinType.CrossJoin : JoinType.CrossApply;
             JoinExpression join = new JoinExpression(resultType, joinType, projection.Source, collectionProjection.Source, null);
             string alias = this.GetNextAlias();
@@ -196,7 +290,7 @@ namespace Sample {
             else {
                 this.map[resultSelector.Parameters[0]] = projection.Projector;
                 this.map[resultSelector.Parameters[1]] = collectionProjection.Projector;
-                Expression result = this.VisitSequence(resultSelector.Body);
+                Expression result = this.Visit(resultSelector.Body);
                 pc = this.ProjectColumns(result, alias, projection.Source.Alias, collectionProjection.Source.Alias);
             }
             return new ProjectionExpression(
@@ -385,7 +479,19 @@ namespace Sample {
             Type returnType = method.ReturnType;
             AggregateType aggType = this.GetAggregateType(method.Name);
             bool hasPredicateArg = this.HasPredicateArg(aggType);
+            bool isDistinct = false;
             bool argumentWasPredicate = false;
+            bool useAlternateArg = false;
+
+            // check for distinct
+            MethodCallExpression mcs = source as MethodCallExpression;
+            if (mcs != null && !hasPredicateArg && argument == null) {
+                if (mcs.Method.Name == "Distinct" && mcs.Arguments.Count == 1 &&
+                    (mcs.Method.DeclaringType == typeof(Queryable) || mcs.Method.DeclaringType == typeof(Enumerable))) {
+                    source = mcs.Arguments[0];
+                    isDistinct = true;
+                }
+            }
 
             if (argument != null && hasPredicateArg) {
                 // convert query.Count(predicate) into query.Where(predicate).Count()
@@ -401,13 +507,13 @@ namespace Sample {
                 this.map[argument.Parameters[0]] = projection.Projector;
                 argExpr = this.Visit(argument.Body);
             }
-            else if (!hasPredicateArg) {
+            else if (!hasPredicateArg || useAlternateArg) {
                 argExpr = projection.Projector;
             }
 
             string alias = this.GetNextAlias();
             var pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
-            Expression aggExpr = new AggregateExpression(returnType, aggType, argExpr);
+            Expression aggExpr = new AggregateExpression(returnType, aggType, argExpr, isDistinct);
             Type selectType = typeof(IEnumerable<>).MakeGenericType(returnType);
             SelectExpression select = new SelectExpression(selectType, alias, new ColumnDeclaration[] { new ColumnDeclaration("", aggExpr) }, projection.Source, null);
 
@@ -417,7 +523,7 @@ namespace Sample {
                 return new ProjectionExpression(select, new ColumnExpression(returnType, alias, ""), gator);
             }
 
-            SubqueryExpression subquery = new SubqueryExpression(returnType, select);
+            ScalarExpression subquery = new ScalarExpression(returnType, select);
 
             // if we can find the corresponding group-info we can build a special AggregateSubquery node that will enable us to 
             // optimize the aggregate expression later using AggregateRewriter
@@ -429,10 +535,10 @@ namespace Sample {
                     this.map[argument.Parameters[0]] = info.Element;
                     argExpr = this.Visit(argument.Body);
                 }
-                else if (!hasPredicateArg) {
+                else if (!hasPredicateArg || useAlternateArg) {
                     argExpr = info.Element;
                 }
-                aggExpr = new AggregateExpression(returnType, aggType, argExpr);
+                aggExpr = new AggregateExpression(returnType, aggType, argExpr, isDistinct);
 
                 // check for easy to optimize case.  If the projection that our aggregate is based on is really the 'group' argument from
                 // the query.GroupBy(xxx, (key, group) => yyy) method then whatever expression we return here will automatically
@@ -446,19 +552,143 @@ namespace Sample {
             return subquery;
         }
 
+        private Expression BindDistinct(Expression source) {
+            ProjectionExpression projection = this.VisitSequence(source);
+            SelectExpression select = projection.Source;
+            string alias = this.GetNextAlias();
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            return new ProjectionExpression(
+                new SelectExpression(select.Type, alias, pc.Columns, projection.Source, null, null, null, true, null, null),
+                pc.Projector
+                );
+        }
+
+        private Expression BindTake(Expression source, Expression take) {
+            ProjectionExpression projection = this.VisitSequence(source);
+            take = this.Visit(take);
+            SelectExpression select = projection.Source;
+            string alias = this.GetNextAlias();
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            return new ProjectionExpression(
+                new SelectExpression(select.Type, alias, pc.Columns, projection.Source, null, null, null, false, null, take),
+                pc.Projector
+                );
+        }
+
+        private Expression BindSkip(Expression source, Expression skip) {
+            ProjectionExpression projection = this.VisitSequence(source);
+            skip = this.Visit(skip);
+            SelectExpression select = projection.Source;
+            string alias = this.GetNextAlias();
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            return new ProjectionExpression(
+                new SelectExpression(select.Type, alias, pc.Columns, projection.Source, null, null, null, false, skip, null),
+                pc.Projector
+                );
+        }
+
+        private Expression BindFirst(Expression source, LambdaExpression predicate, string kind, bool isRoot) {
+            ProjectionExpression projection = this.VisitSequence(source);
+            Expression where = null;
+            if (predicate != null) {
+                this.map[predicate.Parameters[0]] = projection.Projector;
+                where = this.Visit(predicate.Body);
+            }
+            Expression take = kind.StartsWith("First") ? Expression.Constant(1) : null;
+            if (take != null || where != null) {
+                string alias = this.GetNextAlias();
+                ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+                projection = new ProjectionExpression(
+                    new SelectExpression(source.Type, alias, pc.Columns, projection.Source, where, null, null, false, null, take),
+                    pc.Projector
+                    );
+            }
+            if (isRoot) {
+                Type elementType = projection.Projector.Type;
+                ParameterExpression p = Expression.Parameter(typeof(IEnumerable<>).MakeGenericType(elementType), "p");
+                LambdaExpression gator = Expression.Lambda(Expression.Call(typeof(Enumerable), kind, new Type[] { elementType }, p), p);
+                return new ProjectionExpression(projection.Source, projection.Projector, gator);
+            }
+            return projection;
+        }
+
+        private Expression BindAnyAll(Expression source, MethodInfo method, LambdaExpression predicate, bool isRoot) {
+            bool isAll = method.Name == "All";
+            ConstantExpression constSource = source as ConstantExpression;
+            if (constSource != null && !IsTable(constSource)) {
+                System.Diagnostics.Debug.Assert(!isRoot);
+                Expression where = null;
+                foreach (object value in (IEnumerable)constSource.Value) {
+                    Expression expr = Expression.Invoke(predicate, Expression.Constant(value, predicate.Parameters[0].Type));
+                    if (where == null) {
+                        where = expr;
+                    }
+                    else if (isAll) {
+                        where = Expression.And(where, expr);
+                    }
+                    else {
+                        where = Expression.Or(where, expr);
+                    }
+                }
+                return this.Visit(where);
+            }
+            else {
+                if (isAll) {
+                  predicate = Expression.Lambda(Expression.Not(predicate.Body), predicate.Parameters.ToArray());
+                }
+                if (predicate != null) {
+                    source = Expression.Call(typeof(Queryable), "Where", method.GetGenericArguments(), source, predicate);
+                }
+                ProjectionExpression projection = this.VisitSequence(source);
+                Expression result = new ExistsExpression(projection.Source);
+                if (isAll) {
+                    result = Expression.Not(result);
+                }
+                if (isRoot) {
+                    return GetSingletonSequence(result, "SingleOrDefault");
+                }
+                return result;
+            }
+        }
+
+        private Expression BindContains(Expression source, Expression match, bool isRoot) {
+            ConstantExpression constSource = source as ConstantExpression;
+            if (constSource != null && !IsTable(constSource)) {
+                System.Diagnostics.Debug.Assert(!isRoot);
+                List<Expression> values = new List<Expression>();
+                foreach (object value in (IEnumerable)constSource.Value) {
+                    values.Add(Expression.Constant(Convert.ChangeType(value, match.Type), match.Type));
+                }
+                match = this.Visit(match);
+                return new InExpression(match, values);
+            }
+            else {
+                ProjectionExpression projection = this.VisitSequence(source);
+                match = this.Visit(match);
+                Expression result = new InExpression(match, projection.Source);
+                if (isRoot) {
+                    return this.GetSingletonSequence(result, "SingleOrDefault");
+                }
+                return result;
+            }
+        }
+
+        private Expression GetSingletonSequence(Expression expr, string aggregator) {
+            ParameterExpression p = Expression.Parameter(typeof(IEnumerable<>).MakeGenericType(expr.Type), "p");
+            LambdaExpression gator = null;
+            if (aggregator != null) {
+                gator = Expression.Lambda(Expression.Call(typeof(Enumerable), aggregator, new Type[] { expr.Type }, p), p);
+            }
+            string alias = this.GetNextAlias();
+            SelectExpression select = new SelectExpression(p.Type, alias, new[] { new ColumnDeclaration("value", expr) }, null, null);
+            return new ProjectionExpression(select, new ColumnExpression(expr.Type, alias, "value"), gator);
+        }
+
         private bool IsTable(Expression expression) {
-            ConstantExpression c = expression as ConstantExpression;
-            return c != null && IsTable(c.Value);
+            return expression.Type.IsGenericType && expression.Type.GetGenericTypeDefinition() == typeof(Query<>);            
         }
 
-        private bool IsTable(object value) {
-            IQueryable q = value as IQueryable;
-            return q != null && q.Provider == this.provider && q.Expression.NodeType == ExpressionType.Constant;
-        }
-
-        private string GetTableName(object table) {
-            IQueryable tableQuery = (IQueryable)table;
-            Type rowType = tableQuery.ElementType;
+        private string GetTableName(Type rowType) {
             return rowType.Name;
         }
 
@@ -476,38 +706,31 @@ namespace Sample {
         }
 
         private IEnumerable<MemberInfo> GetMappedMembers(Type rowType) {
-            return rowType.GetFields().Cast<MemberInfo>();
+            return rowType.GetFields().Cast<MemberInfo>().OrderBy(m => m.Name);
         }
 
-        private ProjectionExpression GetTableProjection(object value) {
-            IQueryable table = (IQueryable)value;
+        private ProjectionExpression GetTableProjection(Type rowType) {
             string tableAlias = this.GetNextAlias();
             string selectAlias = this.GetNextAlias();
             List<MemberBinding> bindings = new List<MemberBinding>();
             List<ColumnDeclaration> columns = new List<ColumnDeclaration>();
-            foreach (MemberInfo mi in this.GetMappedMembers(table.ElementType)) {
+            foreach (MemberInfo mi in this.GetMappedMembers(rowType)) {
                 string columnName = this.GetColumnName(mi);
                 Type columnType = this.GetColumnType(mi);
                 bindings.Add(Expression.Bind(mi, new ColumnExpression(columnType, selectAlias, columnName)));
                 columns.Add(new ColumnDeclaration(columnName, new ColumnExpression(columnType, tableAlias, columnName)));
             }
-            Expression projector = Expression.MemberInit(Expression.New(table.ElementType), bindings);
-            Type resultType = typeof(IEnumerable<>).MakeGenericType(table.ElementType);
+            Expression projector = Expression.MemberInit(Expression.New(rowType), bindings);
+            Type resultType = typeof(IEnumerable<>).MakeGenericType(rowType);
             return new ProjectionExpression(
-                new SelectExpression(
-                    resultType,
-                    selectAlias,
-                    columns,
-                    new TableExpression(resultType, tableAlias, this.GetTableName(table)),
-                    null
-                    ),
+                new SelectExpression(resultType, selectAlias, columns, new TableExpression(resultType, tableAlias, this.GetTableName(rowType)), null),
                 projector
                 );
         }
 
         protected override Expression VisitConstant(ConstantExpression c) {
-            if (this.IsTable(c.Value)) {
-                return GetTableProjection(c.Value);
+            if (this.IsTable(c)) {
+                return GetTableProjection(TypeSystem.GetElementType(c.Type));
             }
             return c;
         }
@@ -520,7 +743,21 @@ namespace Sample {
             return p;
         }
 
+        protected override Expression VisitInvocation(InvocationExpression iv) {
+            LambdaExpression lambda = iv.Expression as LambdaExpression;
+            if (lambda != null) {
+                for (int i = 0, n = lambda.Parameters.Count; i < n; i++) {
+                    this.map[lambda.Parameters[i]] = iv.Arguments[i];
+                }
+                return this.Visit(lambda.Body);
+            }
+            return base.VisitInvocation(iv);
+        }
+
         protected override Expression VisitMemberAccess(MemberExpression m) {
+            if (this.IsTable(m)) {
+                return this.GetTableProjection(TypeSystem.GetElementType(m.Type));
+            }
             Expression source = this.Visit(m.Expression);
             switch (source.NodeType) {
                 case ExpressionType.MemberInit:

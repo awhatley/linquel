@@ -91,7 +91,15 @@ namespace Sample {
         }
 
         public override string ToString() {
-            return this.provider.GetQueryText(this.expression);
+            if (this.expression.NodeType == ExpressionType.Constant &&
+                ((ConstantExpression)this.expression).Value == this)
+            {
+                return "Table(" + typeof(T) + ")";
+            }
+            else
+            {
+                return this.expression.ToString();
+            }
         }
     }
 }

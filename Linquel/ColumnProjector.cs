@@ -124,7 +124,7 @@ namespace Sample {
                 if (expression != null) {
                     bool saveIsBlocked = this.isBlocked;
                     this.isBlocked = false;
-                    if (expression.NodeType != (ExpressionType)DbExpressionType.Subquery) {
+                    if (expression.NodeType != (ExpressionType)DbExpressionType.Scalar) {
                         base.Visit(expression);
                     }
                     if (!this.isBlocked) {

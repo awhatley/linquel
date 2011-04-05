@@ -57,9 +57,13 @@ namespace Sample {
                 if (e.NodeType == ExpressionType.Constant) {
                     return e;
                 }
-                LambdaExpression lambda = Expression.Lambda(e);
-                Delegate fn = lambda.Compile();
-                return Expression.Constant(fn.DynamicInvoke(null), e.Type);
+                Type type = e.Type;
+                if (type.IsValueType) {
+                    e = Expression.Convert(e, typeof(object));
+                }
+                Expression<Func<object>> lambda = Expression.Lambda<Func<object>>(e);
+                Func<object> fn = lambda.Compile();
+                return Expression.Constant(fn(), type);
             }
         }
 
