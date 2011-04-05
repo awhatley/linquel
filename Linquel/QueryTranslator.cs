@@ -7,16 +7,27 @@ using System.Reflection;
 using System.Text;
 
 namespace Sample {
+    internal class TranslateResult {
+        internal string CommandText;
+        internal LambdaExpression Projector;
+    }
+
     internal class QueryTranslator : ExpressionVisitor {
         StringBuilder sb;
+        ParameterExpression row;
+        ColumnProjection projection;
 
         internal QueryTranslator() {
         }
 
-        internal string Translate(Expression expression) {
+        internal TranslateResult Translate(Expression expression) {
             this.sb = new StringBuilder();
+            this.row = Expression.Parameter(typeof(ProjectionRow), "row");
             this.Visit(expression);
-            return this.sb.ToString();
+            return new TranslateResult {
+                CommandText = this.sb.ToString(),
+                Projector = this.projection != null ? Expression.Lambda(this.projection.Selector, this.row) : null
+            };
         }
 
         private static Expression StripQuotes(Expression e) {
@@ -27,13 +38,26 @@ namespace Sample {
         }
 
         protected override Expression VisitMethodCall(MethodCallExpression m) {
-            if (m.Method.DeclaringType == typeof(Queryable) && m.Method.Name == "Where") {
-                sb.Append("SELECT * FROM (");
-                this.Visit(m.Arguments[0]);
-                sb.Append(") AS T WHERE ");
-                LambdaExpression lambda = (LambdaExpression)StripQuotes(m.Arguments[1]);
-                this.Visit(lambda.Body);
-                return m;
+            if (m.Method.DeclaringType == typeof(Queryable)) {
+                if (m.Method.Name == "Where") {
+                    sb.Append("SELECT * FROM (");
+                    this.Visit(m.Arguments[0]);
+                    sb.Append(") AS T WHERE ");
+                    LambdaExpression lambda = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                    this.Visit(lambda.Body);
+                    return m;
+                }
+                else if (m.Method.Name == "Select") {
+                    LambdaExpression lambda = (LambdaExpression)StripQuotes(m.Arguments[1]);
+                    ColumnProjection projection = new ColumnProjector().ProjectColumns(lambda.Body, this.row);
+                    sb.Append("SELECT ");
+                    sb.Append(projection.Columns);
+                    sb.Append(" FROM (");
+                    this.Visit(m.Arguments[0]);
+                    sb.Append(") AS T ");
+                    this.projection = projection;
+                    return m;
+                }
             }
             throw new NotSupportedException(string.Format("The method '{0}' is not supported", m.Method.Name));
         }
