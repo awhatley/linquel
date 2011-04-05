@@ -56,6 +56,7 @@
     <Compile Include="QueryBinder.cs" />
     <Compile Include="QueryFormatter.cs" />
     <Compile Include="QueryProvider.cs" />
+    <Compile Include="Replacer.cs" />
     <Compile Include="TypeSystem.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

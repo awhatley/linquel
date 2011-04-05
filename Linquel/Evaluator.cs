@@ -32,7 +32,7 @@ namespace Sample {
         /// <summary>
         /// Evaluates & replaces sub-trees when first candidate is reached (top-down)
         /// </summary>
-        class SubtreeEvaluator: ExpressionVisitor {
+        class SubtreeEvaluator: DbExpressionVisitor {
             HashSet<Expression> candidates;
 
             internal SubtreeEvaluator(HashSet<Expression> candidates) {
@@ -67,7 +67,7 @@ namespace Sample {
         /// Performs bottom-up analysis to determine which nodes can possibly
         /// be part of an evaluated sub-tree.
         /// </summary>
-        class Nominator : ExpressionVisitor {
+        class Nominator : DbExpressionVisitor {
             Func<Expression, bool> fnCanBeEvaluated;
             HashSet<Expression> candidates;
             bool cannotBeEvaluated;

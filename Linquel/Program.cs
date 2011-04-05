@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Data.SqlClient;
+using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -27,34 +28,42 @@ namespace Sample {
         public Query<Customers> Customers;
         public Query<Orders> Orders;
 
+        private DbQueryProvider provider;
         public Northwind(DbConnection connection) {
-            QueryProvider provider = new DbQueryProvider(connection);
-            this.Customers = new Query<Customers>(provider);
-            this.Orders = new Query<Orders>(provider);
+            this.provider = new DbQueryProvider(connection);
+            this.Customers = new Query<Customers>(this.provider);
+            this.Orders = new Query<Orders>(this.provider);
+        }
+
+        public TextWriter Log {
+            get { return this.provider.Log; }
+            set { this.provider.Log = value; }
         }
     }
 
     class Program {
         static void Main(string[] args) {
-            string constr = @"Data Source=.\SQLEXPRESS;AttachDbFilename=C:\data\Northwind.mdf;Integrated Security=True;Connect Timeout=30;User Instance=True";
+            string constr = @"Data Source=.\SQLEXPRESS;AttachDbFilename=C:\data\Northwind.mdf;Integrated Security=True;Connect Timeout=30;User Instance=True;MultipleActiveResultSets=true";
             using (SqlConnection con = new SqlConnection(constr)) {
                 con.Open();
                 Northwind db = new Northwind(con);
 
                 string city = "London";
-                var query = db.Customers.Select(c => new {
-                    Name = c.ContactName,
-                    Location = new {
-                        City = c.City,
-                        Country = c.Country
+                var query = from c in db.Customers
+                            where c.City == city
+                            select new {
+                                Name = c.ContactName,
+                                Orders = from o in db.Orders
+                                         where o.CustomerID == c.CustomerID
+                                         select o
+                            };
+
+
+                foreach (var item in query) {
+                    Console.WriteLine("{0}", item.Name);
+                    foreach (var ord in item.Orders) {
+                        Console.WriteLine("\tOrder: {0}", ord.OrderID);
                     }
-                }).Where(c => c.Location.City == city);
-
-                Console.WriteLine("Query:\n{0}\n", query);
-
-                var list = query.ToList();
-                foreach (var item in list) {
-                    Console.WriteLine("{0}", item);
                 }
 
                 Console.ReadLine();

@@ -15,6 +15,12 @@ namespace Sample {
         Projection
     }
 
+    internal static class DbExpressionExtensions {
+        internal static bool IsDbExpression(this ExpressionType et) {
+            return ((int)et) >= 1000;
+        }
+    }
+
     internal class TableExpression : Expression {
         string alias;
         string name;
@@ -100,7 +106,7 @@ namespace Sample {
         SelectExpression source;
         Expression projector;
         internal ProjectionExpression(SelectExpression source, Expression projector)
-            : base((ExpressionType)DbExpressionType.Projection, projector.Type) {
+            : base((ExpressionType)DbExpressionType.Projection, source.Type) {
             this.source = source;
             this.projector = projector;
         }

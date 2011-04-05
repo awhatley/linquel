@@ -49,7 +49,6 @@ namespace Sample {
                     case "Select":
                         return this.BindSelect(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]));
                 }
-                throw new NotSupportedException(string.Format("The method '{0}' is not supported", m.Method.Name));
             }
             return base.VisitMethodCall(m);
         }
