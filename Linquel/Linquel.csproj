@@ -45,6 +45,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AggregateRewriter.cs" />
     <Compile Include="AliasesProduced.cs" />
     <Compile Include="ColumnProjector.cs" />
     <Compile Include="DbExpressions.cs" />

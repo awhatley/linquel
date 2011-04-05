@@ -28,7 +28,6 @@ namespace Sample {
     /// and a projector expression that describes how to combine the columns back into the result object
     /// </summary>
     internal class ColumnProjector : DbExpressionVisitor {
-        Nominator nominator;
         Dictionary<ColumnExpression, ColumnExpression> map;
         List<ColumnDeclaration> columns;
         HashSet<string> columnNames;
@@ -37,18 +36,19 @@ namespace Sample {
         string newAlias;
         int iColumn;
 
-        internal ColumnProjector(Func<Expression, bool> fnCanBeColumn) {
-            this.nominator = new Nominator(fnCanBeColumn);
-        }
-
-        internal ProjectedColumns ProjectColumns(Expression expression, string newAlias, params string[] existingAliases) {
+        private ColumnProjector(Func<Expression, bool> fnCanBeColumn, Expression expression, string newAlias, params string[] existingAliases) {
+            this.newAlias = newAlias;
+            this.existingAliases = existingAliases;
             this.map = new Dictionary<ColumnExpression, ColumnExpression>();
             this.columns = new List<ColumnDeclaration>();
             this.columnNames = new HashSet<string>();
-            this.newAlias = newAlias;
-            this.existingAliases = existingAliases;
-            this.candidates = this.nominator.Nominate(expression);
-            return new ProjectedColumns(this.Visit(expression), this.columns.AsReadOnly());
+            this.candidates = Nominator.Nominate(fnCanBeColumn, expression);
+        }
+
+        internal static ProjectedColumns ProjectColumns(Func<Expression, bool> fnCanBeColumn, Expression expression, string newAlias, params string[] existingAliases) {
+            ColumnProjector projector = new ColumnProjector(fnCanBeColumn, expression, newAlias, existingAliases);
+            Expression expr = projector.Visit(expression);
+            return new ProjectedColumns(expr, projector.columns.AsReadOnly());
         }
 
         protected override Expression Visit(Expression expression) {
@@ -63,7 +63,7 @@ namespace Sample {
                         int ordinal = this.columns.Count;
                         string columnName = this.GetUniqueColumnName(column.Name);
                         this.columns.Add(new ColumnDeclaration(columnName, column));
-                        mapped = new ColumnExpression(column.Type, this.newAlias, columnName, ordinal);
+                        mapped = new ColumnExpression(column.Type, this.newAlias, columnName);
                         this.map[column] = mapped;
                         this.columnNames.Add(columnName);
                         return mapped;
@@ -73,9 +73,8 @@ namespace Sample {
                 }
                 else {
                     string columnName = this.GetNextColumnName();
-                    int ordinal = this.columns.Count;
                     this.columns.Add(new ColumnDeclaration(columnName, expression));
-                    return new ColumnExpression(expression.Type, this.newAlias, columnName, ordinal);
+                    return new ColumnExpression(expression.Type, this.newAlias, columnName);
                 }
             }
             else {
@@ -109,22 +108,25 @@ namespace Sample {
             bool isBlocked;
             HashSet<Expression> candidates;
 
-            internal Nominator(Func<Expression, bool> fnCanBeColumn) {
+            private Nominator(Func<Expression, bool> fnCanBeColumn) {
                 this.fnCanBeColumn = fnCanBeColumn;
-            }
-
-            internal HashSet<Expression> Nominate(Expression expression) {
                 this.candidates = new HashSet<Expression>();
                 this.isBlocked = false;
-                this.Visit(expression);
-                return this.candidates;
+            }
+
+            internal static HashSet<Expression> Nominate(Func<Expression, bool> fnCanBeColumn, Expression expression) {
+                Nominator nominator = new Nominator(fnCanBeColumn);
+                nominator.Visit(expression);
+                return nominator.candidates;
             }
 
             protected override Expression Visit(Expression expression) {
                 if (expression != null) {
                     bool saveIsBlocked = this.isBlocked;
                     this.isBlocked = false;
-                    base.Visit(expression);
+                    if (expression.NodeType != (ExpressionType)DbExpressionType.Subquery) {
+                        base.Visit(expression);
+                    }
                     if (!this.isBlocked) {
                         if (this.fnCanBeColumn(expression)) {
                             this.candidates.Add(expression);

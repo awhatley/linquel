@@ -14,13 +14,14 @@ namespace Sample {
         int indent = 2;
         int depth;
 
-        internal QueryFormatter() {
+        private QueryFormatter() {
+            this.sb = new StringBuilder();
         }
 
-        internal string Format(Expression expression) {
-            this.sb = new StringBuilder();
-            this.Visit(expression);
-            return this.sb.ToString();
+        internal static string Format(Expression expression) {
+            QueryFormatter formatter = new QueryFormatter();
+            formatter.Visit(expression);
+            return formatter.sb.ToString();
         }
 
         protected enum Indentation {
@@ -42,14 +43,11 @@ namespace Sample {
             }
         }
 
-        private void Indent(Indentation style)
-        {
-            if (style == Indentation.Inner)
-            {
+        private void Indent(Indentation style) {
+            if (style == Indentation.Inner) {
                 this.depth++;
             }
-            else if (style == Indentation.Outer)
-            {
+            else if (style == Indentation.Outer) {
                 this.depth--;
                 System.Diagnostics.Debug.Assert(this.depth >= 0);
             }
@@ -148,7 +146,7 @@ namespace Sample {
                     sb.Append(", ");
                 }
                 ColumnExpression c = this.Visit(column.Expression) as ColumnExpression;
-                if (c == null || c.Name != select.Columns[i].Name) {
+                if (!string.IsNullOrEmpty(column.Name) && (c == null || c.Name != column.Name)) {
                     sb.Append(" AS ");
                     sb.Append(column.Name);
                 }
@@ -177,6 +175,16 @@ namespace Sample {
                     }
                 }
             }
+            if (select.GroupBy != null && select.GroupBy.Count > 0) {
+                this.AppendNewLine(Indentation.Same);
+                sb.Append("GROUP BY ");
+                for (int i = 0, n = select.GroupBy.Count; i < n; i++) {
+                    if (i > 0) {
+                        sb.Append(", ");
+                    }
+                    this.Visit(select.GroupBy[i]);
+                }
+            }
             return select;
         }
 
@@ -193,10 +201,11 @@ namespace Sample {
                     sb.Append("(");
                     this.AppendNewLine(Indentation.Inner);
                     this.Visit(select);
-                    this.AppendNewLine(Indentation.Outer);
+                    this.AppendNewLine(Indentation.Same);
                     sb.Append(")");
                     sb.Append(" AS ");
                     sb.Append(select.Alias);
+                    this.Indent(Indentation.Outer);
                     break;
                 case DbExpressionType.Join:
                     this.VisitJoin((JoinExpression)source);
@@ -229,6 +238,50 @@ namespace Sample {
                 this.Indent(Indentation.Outer);
             }
             return join;
+        }
+
+        private string GetAggregateName(AggregateType aggregateType) {
+            switch (aggregateType) {
+                case AggregateType.Count: return "COUNT";
+                case AggregateType.Min: return "MIN";
+                case AggregateType.Max: return "MAX";
+                case AggregateType.Sum: return "SUM";
+                case AggregateType.Average: return "AVG";
+                default: throw new Exception(string.Format("Unknown aggregate type: {0}", aggregateType));
+            }
+        }
+
+        private bool RequiresAsteriskWhenNoArgument(AggregateType aggregateType) {
+            return aggregateType == AggregateType.Count;
+        }
+
+        protected override Expression VisitAggregate(AggregateExpression aggregate) {
+            sb.Append(GetAggregateName(aggregate.AggregateType));
+            sb.Append("(");
+            if (aggregate.Argument != null) {
+                this.Visit(aggregate.Argument);
+            }
+            else if (RequiresAsteriskWhenNoArgument(aggregate.AggregateType)) {
+                sb.Append("*");
+            }
+            sb.Append(")");
+            return aggregate;
+        }
+
+        protected override Expression VisitIsNull(IsNullExpression isnull) {
+            this.Visit(isnull.Expression);
+            sb.Append(" IS NULL");
+            return isnull;
+        }
+
+        protected override Expression VisitSubquery(SubqueryExpression subquery) {
+            sb.Append("(");
+            this.AppendNewLine(Indentation.Inner);
+            this.Visit(subquery.Select);
+            this.AppendNewLine(Indentation.Same);
+            sb.Append(")");
+            this.Indent(Indentation.Outer);
+            return subquery;
         }
     }
 }

@@ -11,9 +11,13 @@ namespace Sample
 {
     internal class RedundantSubqueryRemover : DbExpressionVisitor
     {
-        internal Expression Remove(Expression expression)
+        private RedundantSubqueryRemover() 
         {
-            return this.Visit(expression);
+        }
+
+        internal static Expression Remove(Expression expression)
+        {
+            return new RedundantSubqueryRemover().Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -21,63 +25,95 @@ namespace Sample
             select = (SelectExpression)base.VisitSelect(select);
 
             // first remove all purely redundant subqueries
-            List<SelectExpression> redundant = new RedundantSubqueryGatherer().Gather(select.From);
+            List<SelectExpression> redundant = RedundantSubqueryGatherer.Gather(select.From);
             if (redundant != null)
             {
-                select = (SelectExpression)new SubqueryRemover().Remove(select, redundant);
+                select = SubqueryRemover.Remove(select, redundant);
             }
 
-            // next attempt to merge subqueries
-
-            // can only merge if subquery is a single select (not a join)
-            SelectExpression fromSelect = select.From as SelectExpression;
-            if (fromSelect != null)
+            // next attempt to merge subqueries that would have been removed by the above
+            // logic except for the existence of a where clause
+            while (CanMergeWithFrom(select))
             {
-                // can only merge if subquery has simple-projection (no renames or complex expressions)
-                if (HasSimpleProjection(fromSelect))
+                SelectExpression fromSelect = (SelectExpression)select.From;
+
+                // remove the redundant subquery
+                select = SubqueryRemover.Remove(select, fromSelect);
+
+                // merge where expressions 
+                Expression where = select.Where;
+                if (fromSelect.Where != null)
                 {
-                    // remove the redundant subquery
-                    select = (SelectExpression)new SubqueryRemover().Remove(select, fromSelect);
-                    // merge where expressions 
-                    Expression where = select.Where;
-                    if (fromSelect.Where != null)
+                    if (where != null)
                     {
-                        if (where != null)
-                        {
-                            where = Expression.And(fromSelect.Where, where);
-                        }
-                        else
-                        {
-                            where = fromSelect.Where;
-                        }
+                        where = Expression.And(fromSelect.Where, where);
                     }
-                    if (where != select.Where)
+                    else
                     {
-                        return new SelectExpression(select.Type, select.Alias, select.Columns, select.From, where, select.OrderBy);
+                        where = fromSelect.Where;
                     }
+                }
+                if (where != select.Where)
+                {
+                    select = new SelectExpression(select.Type, select.Alias, select.Columns, select.From, where, select.OrderBy, select.GroupBy);
                 }
             }
 
             return select;
         }
 
-        private static bool IsRedudantSubquery(SelectExpression select)
+        protected override Expression VisitSubquery(SubqueryExpression subquery)
         {
-            return HasSimpleProjection(select)
-                && select.Where == null
-                && (select.OrderBy == null || select.OrderBy.Count == 0);
+            return base.VisitSubquery(subquery);
         }
 
-        private static bool HasSimpleProjection(SelectExpression select)
+        protected override Expression VisitProjection(ProjectionExpression proj)
+        {
+            proj = (ProjectionExpression)base.VisitProjection(proj);
+            if (proj.Source.From is SelectExpression) {
+                List<SelectExpression> redundant = RedundantSubqueryGatherer.Gather(proj.Source);
+                if (redundant != null) 
+                {
+                    proj = SubqueryRemover.Remove(proj, redundant);
+                }
+            }
+            return proj;
+        }
+
+        private static bool CanMergeWithFrom(SelectExpression select)
+        {
+            SelectExpression fromSelect = select.From as SelectExpression;
+            if (fromSelect == null) return false;
+            return (ProjectionIsSimple(fromSelect) || ProjectionIsNameMapOnly(fromSelect))
+                && (fromSelect.OrderBy == null || fromSelect.OrderBy.Count == 0)
+                && (fromSelect.GroupBy == null || fromSelect.GroupBy.Count == 0);
+        }
+
+        private static bool ProjectionIsSimple(SelectExpression select)
         {
             foreach (ColumnDeclaration decl in select.Columns)
             {
                 ColumnExpression col = decl.Expression as ColumnExpression;
                 if (col == null || decl.Name != col.Name)
                 {
-                    // column name changed or column expression is more complex than reference to another column
                     return false;
                 }
+            }
+            return true;
+        }
+
+        private static bool ProjectionIsNameMapOnly(SelectExpression select)
+        {
+            SelectExpression fromSelect = select.From as SelectExpression;
+            if (fromSelect == null || select.Columns.Count != fromSelect.Columns.Count)
+                return false;
+            // test that all columns in 'select' are refering to columns in the same position
+            // in 'fromSelect'.
+            for (int i = 0, n = select.Columns.Count; i < n; i++)
+            {
+                ColumnExpression col = select.Columns[i].Expression as ColumnExpression;
+                if (col == null || !(col.Name == fromSelect.Columns[i].Name))
+                    return false;
             }
             return true;
         }
@@ -86,10 +122,24 @@ namespace Sample
         {
             List<SelectExpression> redundant;
 
-            internal List<SelectExpression> Gather(Expression source)
+            private RedundantSubqueryGatherer()
             {
-                this.Visit(source);
-                return this.redundant;
+            }
+
+            internal static List<SelectExpression> Gather(Expression source)
+            {
+                RedundantSubqueryGatherer gatherer = new RedundantSubqueryGatherer();
+                gatherer.Visit(source);
+                return gatherer.redundant;
+            }
+
+            private static bool IsRedudantSubquery(SelectExpression select)
+            {
+                return (select.From is SelectExpression || select.From is TableExpression)
+                    && (ProjectionIsSimple(select) || ProjectionIsNameMapOnly(select))
+                    && (select.Where == null)
+                    && (select.OrderBy == null || select.OrderBy.Count == 0)
+                    && (select.GroupBy == null || select.GroupBy.Count == 0);
             }
 
             protected override Expression VisitSelect(SelectExpression select)

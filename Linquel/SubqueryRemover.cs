@@ -14,16 +14,30 @@ namespace Sample
         HashSet<SelectExpression> selectsToRemove;
         Dictionary<string, Dictionary<string, Expression>> map;
 
-        public Expression Remove(SelectExpression outerSelect, params SelectExpression[] selectsToRemove)
+        private SubqueryRemover(IEnumerable<SelectExpression> selectsToRemove)
+        {
+            this.selectsToRemove = new HashSet<SelectExpression>(selectsToRemove);
+            this.map = this.selectsToRemove.ToDictionary(d => d.Alias, d => d.Columns.ToDictionary(d2 => d2.Name, d2 => d2.Expression));
+        }
+
+        internal static SelectExpression Remove(SelectExpression outerSelect, params SelectExpression[] selectsToRemove)
         {
             return Remove(outerSelect, (IEnumerable<SelectExpression>)selectsToRemove);
         }
 
-        public Expression Remove(SelectExpression outerSelect, IEnumerable<SelectExpression> selectsToRemove)
+        internal static SelectExpression Remove(SelectExpression outerSelect, IEnumerable<SelectExpression> selectsToRemove)
         {
-            this.selectsToRemove = new HashSet<SelectExpression>(selectsToRemove);
-            this.map = selectsToRemove.ToDictionary(d => d.Alias, d => d.Columns.ToDictionary(d2 => d2.Name, d2 => d2.Expression));
-            return this.Visit(outerSelect);
+            return (SelectExpression)new SubqueryRemover(selectsToRemove).Visit(outerSelect);
+        }
+
+        internal static ProjectionExpression Remove(ProjectionExpression projection, params SelectExpression[] selectsToRemove)
+        {
+            return Remove(projection, (IEnumerable<SelectExpression>)selectsToRemove);
+        }
+
+        internal static ProjectionExpression Remove(ProjectionExpression projection, IEnumerable<SelectExpression> selectsToRemove)
+        {
+            return (ProjectionExpression)new SubqueryRemover(selectsToRemove).Visit(projection);
         }
 
         protected override Expression VisitSelect(SelectExpression select)

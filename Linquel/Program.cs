@@ -48,18 +48,16 @@ namespace Sample {
                 con.Open();
                 Northwind db = new Northwind(con);
 
-                var query = 
-                    from c in db.Customers
-                    join o in db.Orders on c.CustomerID equals o.CustomerID
-                    let m = c.Phone
-                    orderby c.City
-                    where c.Country == "UK"
-                    where m != "555-5555"
-                    select new { c.City, c.ContactName } into x
-                    where x.City == "London"
-                    select x;
+                db.Log = Console.Out;
 
-                Console.WriteLine(query);
+                var query = from o in db.Orders
+                            group o by o.CustomerID into g
+                            select new { 
+                                Customer = g.Key, 
+                                Total = g.Sum(o => o.OrderID), 
+                                Min = g.Min(o => o.OrderID), 
+                                Avg = g.Average(o => o.OrderID) 
+                            };
 
                 foreach (var item in query) {
                     Console.WriteLine(item);

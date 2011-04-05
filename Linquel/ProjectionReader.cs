@@ -26,26 +26,36 @@ namespace Sample {
     internal class ProjectionBuilder : DbExpressionVisitor {
         ParameterExpression row;
         string rowAlias;
+        IList<string> columns;
         static MethodInfo miGetValue;
         static MethodInfo miExecuteSubQuery;
         
-        internal ProjectionBuilder() {
+        private ProjectionBuilder(string rowAlias, IList<string> columns) {
+            this.rowAlias = rowAlias;
+            this.columns = columns;
+            this.row = Expression.Parameter(typeof(ProjectionRow), "row");
             if (miGetValue == null) {
                 miGetValue = typeof(ProjectionRow).GetMethod("GetValue");
                 miExecuteSubQuery = typeof(ProjectionRow).GetMethod("ExecuteSubQuery");
             }
         }
 
-        internal LambdaExpression Build(Expression expression, string alias) {
-            this.row = Expression.Parameter(typeof(ProjectionRow), "row");
-            this.rowAlias = alias;
-            Expression body = this.Visit(expression);
-            return Expression.Lambda(body, this.row);
+        internal static LambdaExpression Build(Expression expression, string alias, IList<string> columns) {
+            ProjectionBuilder builder = new ProjectionBuilder(alias, columns);
+            Expression body = builder.Visit(expression);
+            return Expression.Lambda(body, builder.row);
         }
 
         protected override Expression VisitColumn(ColumnExpression column) {
             if (column.Alias == this.rowAlias) {
-                return Expression.Convert(Expression.Call(this.row, miGetValue, Expression.Constant(column.Ordinal)), column.Type);
+                int iOrdinal = this.columns.IndexOf(column.Name);
+                return Expression.Convert(
+                    Expression.Call(typeof(System.Convert), "ChangeType", null,
+                        Expression.Call(this.row, miGetValue, Expression.Constant(iOrdinal)),
+                        Expression.Constant(column.Type)
+                        ),                        
+                        column.Type
+                    );
             }
             return column;
         }
@@ -112,7 +122,7 @@ namespace Sample {
             }
 
             public override IEnumerable<E> ExecuteSubQuery<E>(LambdaExpression query) {
-                ProjectionExpression projection = (ProjectionExpression) new Replacer().Replace(query.Body, query.Parameters[0], Expression.Constant(this));
+                ProjectionExpression projection = (ProjectionExpression) Replacer.Replace(query.Body, query.Parameters[0], Expression.Constant(this));
                 projection = (ProjectionExpression) Evaluator.PartialEval(projection, CanEvaluateLocally);
                 IEnumerable<E> result = (IEnumerable<E>)this.provider.Execute(projection);
                 List<E> list = new List<E>(result);

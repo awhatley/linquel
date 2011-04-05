@@ -13,7 +13,7 @@ namespace Sample {
         /// <param name="fnCanBeEvaluated">A function that decides whether a given expression node can be part of the local function.</param>
         /// <returns>A new tree with sub-trees evaluated and replaced.</returns>
         public static Expression PartialEval(Expression expression, Func<Expression, bool> fnCanBeEvaluated) {
-            return new SubtreeEvaluator(new Nominator(fnCanBeEvaluated).Nominate(expression)).Eval(expression);
+            return SubtreeEvaluator.Eval(Nominator.Nominate(fnCanBeEvaluated, expression), expression);
         }
 
         /// <summary>
@@ -35,12 +35,12 @@ namespace Sample {
         class SubtreeEvaluator: DbExpressionVisitor {
             HashSet<Expression> candidates;
 
-            internal SubtreeEvaluator(HashSet<Expression> candidates) {
+            private SubtreeEvaluator(HashSet<Expression> candidates) {
                 this.candidates = candidates;
             }
 
-            internal Expression Eval(Expression exp) {
-                return this.Visit(exp);
+            internal static Expression Eval(HashSet<Expression> candidates, Expression exp) {
+                return new SubtreeEvaluator(candidates).Visit(exp);
             }
 
             protected override Expression Visit(Expression exp) {
@@ -72,14 +72,15 @@ namespace Sample {
             HashSet<Expression> candidates;
             bool cannotBeEvaluated;
 
-            internal Nominator(Func<Expression, bool> fnCanBeEvaluated) {
+            private Nominator(Func<Expression, bool> fnCanBeEvaluated) {
+                this.candidates = new HashSet<Expression>();
                 this.fnCanBeEvaluated = fnCanBeEvaluated;
             }
 
-            internal HashSet<Expression> Nominate(Expression expression) {
-                this.candidates = new HashSet<Expression>();
-                this.Visit(expression);
-                return this.candidates;
+            internal static HashSet<Expression> Nominate(Func<Expression, bool> fnCanBeEvaluated, Expression expression) {
+                Nominator nominator = new Nominator(fnCanBeEvaluated);
+                nominator.Visit(expression);
+                return nominator.candidates;
             }
 
             protected override Expression Visit(Expression expression) {

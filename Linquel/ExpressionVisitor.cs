@@ -165,22 +165,24 @@ namespace Sample {
         }
 
         protected virtual ReadOnlyCollection<Expression> VisitExpressionList(ReadOnlyCollection<Expression> original) {
-            List<Expression> list = null;
-            for (int i = 0, n = original.Count; i < n; i++) {
-                Expression p = this.Visit(original[i]);
-                if (list != null) {
-                    list.Add(p);
-                }
-                else if (p != original[i]) {
-                    list = new List<Expression>(n);
-                    for (int j = 0; j < i; j++) {
-                        list.Add(original[j]);
+            if (original != null) {
+                List<Expression> list = null;
+                for (int i = 0, n = original.Count; i < n; i++) {
+                    Expression p = this.Visit(original[i]);
+                    if (list != null) {
+                        list.Add(p);
                     }
-                    list.Add(p);
+                    else if (p != original[i]) {
+                        list = new List<Expression>(n);
+                        for (int j = 0; j < i; j++) {
+                            list.Add(original[j]);
+                        }
+                        list.Add(p);
+                    }
                 }
-            }
-            if (list != null) {
-                return list.AsReadOnly();
+                if (list != null) {
+                    return list.AsReadOnly();
+                }
             }
             return original;
         }

@@ -15,12 +15,12 @@ namespace Sample {
         IEnumerable<OrderExpression> gatheredOrderings;
         bool isOuterMostSelect;
 
-        internal OrderByRewriter() {
+        private OrderByRewriter() {
+            this.isOuterMostSelect = true;
         }
 
-        internal Expression Rewrite(Expression expression) {
-            this.isOuterMostSelect = true;
-            return this.Visit(expression);
+        internal static Expression Rewrite(Expression expression) {
+            return new OrderByRewriter().Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select) {
@@ -33,12 +33,12 @@ namespace Sample {
                     this.PrependOrderings(select.OrderBy);
                 }
                 bool canHaveOrderBy = saveIsOuterMostSelect;
-                bool canPassOnOrderings = !saveIsOuterMostSelect;
+                bool canPassOnOrderings = !saveIsOuterMostSelect && (select.GroupBy == null || select.GroupBy.Count == 0);
                 IEnumerable<OrderExpression> orderings = (canHaveOrderBy) ? this.gatheredOrderings : null;
                 ReadOnlyCollection<ColumnDeclaration> columns = select.Columns;
                 if (this.gatheredOrderings != null) {
                     if (canPassOnOrderings) {
-                        HashSet<string> producedAliases = new AliasesProduced().Gather(select.From);
+                        HashSet<string> producedAliases = AliasesProduced.Gather(select.From);
                         // reproject order expressions using this select's alias so the outer select will have properly formed expressions
                         BindResult project = this.RebindOrderings(this.gatheredOrderings, select.Alias, producedAliases, select.Columns);
                         this.gatheredOrderings = project.Orderings;
@@ -49,13 +49,21 @@ namespace Sample {
                     }
                 }
                 if (orderings != select.OrderBy || columns != select.Columns) {
-                    select = new SelectExpression(select.Type, select.Alias, columns, select.From, select.Where, orderings);
+                    select = new SelectExpression(select.Type, select.Alias, columns, select.From, select.Where, orderings, select.GroupBy);
                 }
                 return select;
             }
             finally {
                 this.isOuterMostSelect = saveIsOuterMostSelect;
             }
+        }
+
+        protected override Expression VisitSubquery(SubqueryExpression subquery) {
+            var saveOrderings = this.gatheredOrderings;
+            this.gatheredOrderings = null;
+            var result = base.VisitSubquery(subquery);
+            this.gatheredOrderings = saveOrderings;
+            return result;
         }
 
         protected override Expression VisitJoin(JoinExpression join) {
@@ -131,7 +139,7 @@ namespace Sample {
                         if (decl.Expression == ordering.Expression || 
                             (column != null && declColumn != null && column.Alias == declColumn.Alias && column.Name == declColumn.Name)) {
                             // found it, so make a reference to this column
-                            expr = new ColumnExpression(column.Type, alias, decl.Name, iOrdinal);
+                            expr = new ColumnExpression(column.Type, alias, decl.Name);
                             break;
                         }
                         iOrdinal++;
@@ -144,7 +152,7 @@ namespace Sample {
                         }
                         string colName = column != null ? column.Name : "c" + iOrdinal;
                         newColumns.Add(new ColumnDeclaration(colName, ordering.Expression));
-                        expr = new ColumnExpression(expr.Type, alias, colName, iOrdinal);
+                        expr = new ColumnExpression(expr.Type, alias, colName);
                     }
                     newOrderings.Add(new OrderExpression(ordering.OrderType, expr));
                 }

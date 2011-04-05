@@ -13,22 +13,57 @@ namespace Sample
     {
         Dictionary<string, HashSet<string>> allColumnsUsed;
 
-        internal Expression Remove(Expression expression)
+        private UnusedColumnRemover()
         {
             this.allColumnsUsed = new Dictionary<string, HashSet<string>>();
-            return this.Visit(expression);
+        }
+
+        internal static Expression Remove(Expression expression) 
+        {
+            return new UnusedColumnRemover().Visit(expression);
+        }
+
+        private void MarkColumnAsUsed(string alias, string name)
+        {
+            HashSet<string> columns;
+            if (!this.allColumnsUsed.TryGetValue(alias, out columns))
+            {
+                columns = new HashSet<string>();
+                this.allColumnsUsed.Add(alias, columns);
+            }
+            columns.Add(name);
+        }
+
+        private bool IsColumnUsed(string alias, string name)
+        {
+            HashSet<string> columnsUsed;
+            if (this.allColumnsUsed.TryGetValue(alias, out columnsUsed))
+            {
+                if (columnsUsed != null)
+                {
+                    return columnsUsed.Contains(name);
+                }
+            }
+            return false;
+        }
+
+        private void ClearColumnsUsed(string alias)
+        {
+            this.allColumnsUsed[alias] = new HashSet<string>();
         }
 
         protected override Expression VisitColumn(ColumnExpression column)
         {
-            HashSet<string> columns;
-            if (!this.allColumnsUsed.TryGetValue(column.Alias, out columns))
-            {
-                columns = new HashSet<string>();
-                this.allColumnsUsed.Add(column.Alias, columns);
-            }
-            columns.Add(column.Name);
+            MarkColumnAsUsed(column.Alias, column.Name);
             return column;
+        }
+
+        protected override Expression VisitSubquery(SubqueryExpression subquery)
+        {
+            System.Diagnostics.Debug.Assert(subquery.Select.Columns.Count == 1);
+            MarkColumnAsUsed(subquery.Select.Alias, subquery.Select.Columns[0].Name);
+            Expression result = base.VisitSubquery(subquery);
+            return result;
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -36,51 +71,54 @@ namespace Sample
             // visit column projection first
             ReadOnlyCollection<ColumnDeclaration> columns = select.Columns;
 
-            HashSet<string> columnsUsed;
-            if (this.allColumnsUsed.TryGetValue(select.Alias, out columnsUsed))
+            List<ColumnDeclaration> alternate = null;
+            for (int i = 0, n = select.Columns.Count; i < n; i++)
             {
-                List<ColumnDeclaration> alternate = null;
-                for (int i = 0, n = select.Columns.Count; i < n; i++)
+                ColumnDeclaration decl = select.Columns[i];
+                if (IsColumnUsed(select.Alias, decl.Name))
                 {
-                    ColumnDeclaration decl = select.Columns[i];
-                    if (!columnsUsed.Contains(decl.Name))
+                    Expression expr = this.Visit(decl.Expression);
+                    if (expr != decl.Expression)
                     {
-                        decl = null;  // null means it gets omitted
-                    }
-                    else
-                    {
-                        Expression expr = this.Visit(decl.Expression);
-                        if (expr != decl.Expression)
-                        {
-                            decl = new ColumnDeclaration(decl.Name, decl.Expression);
-                        }
-                    }
-                    if (decl != select.Columns[i] && alternate == null)
-                    {
-                        alternate = new List<ColumnDeclaration>();
-                        for (int j = 0; j < i; j++)
-                        {
-                            alternate.Add(select.Columns[j]);
-                        }
-                    }
-                    if (decl != null && alternate != null)
-                    {
-                        alternate.Add(decl);
+                        decl = new ColumnDeclaration(decl.Name, expr);
                     }
                 }
-                if (alternate != null)
+                else
                 {
-                    columns = alternate.AsReadOnly();
+                    decl = null;  // null means it gets omitted
+                }
+                if (decl != select.Columns[i] && alternate == null)
+                {
+                    alternate = new List<ColumnDeclaration>();
+                    for (int j = 0; j < i; j++)
+                    {
+                        alternate.Add(select.Columns[j]);
+                    }
+                }
+                if (decl != null && alternate != null)
+                {
+                    alternate.Add(decl);
                 }
             }
+            if (alternate != null)
+            {
+                columns = alternate.AsReadOnly();
+            }
 
+            ReadOnlyCollection<Expression> groupbys = this.VisitExpressionList(select.GroupBy);
             ReadOnlyCollection<OrderExpression> orderbys = this.VisitOrderBy(select.OrderBy);
             Expression where = this.Visit(select.Where);
             Expression from = this.Visit(select.From);
 
-            if (columns != select.Columns || orderbys != select.OrderBy || where != select.Where || from != select.From)
+            ClearColumnsUsed(select.Alias);
+
+            if (columns != select.Columns 
+                || orderbys != select.OrderBy 
+                || groupbys != select.GroupBy
+                || where != select.Where 
+                || from != select.From)
             {
-                return new SelectExpression(select.Type, select.Alias, columns, from, where, orderbys);
+                select = new SelectExpression(select.Type, select.Alias, columns, from, where, orderbys, groupbys);
             }
 
             return select;
@@ -93,7 +131,7 @@ namespace Sample
             SelectExpression source = (SelectExpression)this.Visit(projection.Source);
             if (projector != projection.Projector || source != projection.Source)
             {
-                return new ProjectionExpression(source, projector);
+                return new ProjectionExpression(source, projector, projection.Aggregator);
             }
             return projection;
         }

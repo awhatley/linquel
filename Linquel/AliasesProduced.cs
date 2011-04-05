@@ -13,11 +13,16 @@ namespace Sample
     {
         HashSet<string> aliases;
 
-        public HashSet<string> Gather(Expression source)
+        private AliasesProduced()
         {
             this.aliases = new HashSet<string>();
-            this.Visit(source);
-            return this.aliases;
+        }
+
+        internal static HashSet<string> Gather(Expression source)
+        {
+            AliasesProduced produced = new AliasesProduced();
+            produced.Visit(source);
+            return produced.aliases;
         }
 
         protected override Expression VisitSelect(SelectExpression select)
