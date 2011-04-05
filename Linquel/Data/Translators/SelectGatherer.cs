@@ -8,7 +8,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Linq.Expressions;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// returns the list of SelectExpressions accessible from the source expression

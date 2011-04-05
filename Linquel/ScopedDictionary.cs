@@ -5,7 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 
-namespace IQ
+namespace IQToolkit
 {
     public class ScopedDictionary<TKey, TValue>
     {

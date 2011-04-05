@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// An extended expression visitor including custom DbExpression nodes
@@ -57,10 +57,15 @@ namespace IQ.Data
                     return this.VisitClientJoin((ClientJoinExpression)exp);
                 case DbExpressionType.Insert:
                 case DbExpressionType.Update:
-                case DbExpressionType.Upsert:
                 case DbExpressionType.Delete:
-                case DbExpressionType.Batch:
+                case DbExpressionType.If:
+                case DbExpressionType.Block:
+                case DbExpressionType.Declaration:
                     return this.VisitCommand((CommandExpression)exp);
+                case DbExpressionType.Batch:
+                    return this.VisitBatch((BatchExpression)exp);
+                case DbExpressionType.Variable:
+                    return this.VisitVariable((VariableExpression)exp);
                 case DbExpressionType.Function:
                     return this.VisitFunction((FunctionExpression)exp);
                 case DbExpressionType.Entity:
@@ -357,84 +362,67 @@ namespace IQ.Data
             switch ((DbExpressionType)command.NodeType)
             {
                 case DbExpressionType.Insert:
-                    return this.VisitInsert((InsertExpression)command);
+                    return this.VisitInsert((InsertCommand)command);
                 case DbExpressionType.Update:
-                    return this.VisitUpdate((UpdateExpression)command);
+                    return this.VisitUpdate((UpdateCommand)command);
                 case DbExpressionType.Delete:
-                    return this.VisitDelete((DeleteExpression)command);
-                case DbExpressionType.Upsert:
-                    return this.VisitUpsert((UpsertExpression)command);
-                case DbExpressionType.Batch:
-                    return this.VisitBatch((BatchExpression)command);
+                    return this.VisitDelete((DeleteCommand)command);
+                case DbExpressionType.If:
+                    return this.VisitIf((IFCommand)command);
+                case DbExpressionType.Block:
+                    return this.VisitBlock((BlockCommand)command);
+                case DbExpressionType.Declaration:
+                    return this.VisitDeclaration((DeclarationCommand)command);
                 default:
                     return this.VisitUnknown(command);
             }
         }
 
-        protected virtual Expression VisitInsert(InsertExpression insert)
+        protected virtual Expression VisitInsert(InsertCommand insert)
         {
             var table = (TableExpression)this.Visit(insert.Table);
             var assignments = this.VisitColumnAssignments(insert.Assignments);
-            var result = this.Visit(insert.Result);
-            return this.UpdateInsert(insert, table, assignments, result);
+            return this.UpdateInsert(insert, table, assignments);
         }
 
-        protected InsertExpression UpdateInsert(InsertExpression insert, TableExpression table, IEnumerable<ColumnAssignment> assignments, Expression result)
+        protected InsertCommand UpdateInsert(InsertCommand insert, TableExpression table, IEnumerable<ColumnAssignment> assignments)
         {
-            if (table != insert.Table || assignments != insert.Assignments || result != insert.Result)
+            if (table != insert.Table || assignments != insert.Assignments)
             {
-                return new InsertExpression(table, assignments, result);
+                return new InsertCommand(table, assignments);
             }
             return insert;
         }
 
-        protected virtual Expression VisitUpdate(UpdateExpression update)
+        protected virtual Expression VisitUpdate(UpdateCommand update)
         {
             var table = (TableExpression)this.Visit(update.Table);
             var where = this.Visit(update.Where);
             var assignments = this.VisitColumnAssignments(update.Assignments);
-            var result = this.Visit(update.Result);
-            return this.UpdateUpdate(update, table, where, assignments, result);
+            return this.UpdateUpdate(update, table, where, assignments);
         }
 
-        protected UpdateExpression UpdateUpdate(UpdateExpression update, TableExpression table, Expression where, IEnumerable<ColumnAssignment> assignments, Expression result)
+        protected UpdateCommand UpdateUpdate(UpdateCommand update, TableExpression table, Expression where, IEnumerable<ColumnAssignment> assignments)
         {
-            if (table != update.Table || where != update.Where || assignments != update.Assignments || result != update.Result)
+            if (table != update.Table || where != update.Where || assignments != update.Assignments)
             {
-                return new UpdateExpression(table, where, assignments, result);
+                return new UpdateCommand(table, where, assignments);
             }
             return update;
         }
 
-        protected virtual Expression VisitUpsert(UpsertExpression upsert)
-        {
-            var check = this.Visit(upsert.Check);
-            var insert = (InsertExpression)this.Visit(upsert.Insert);
-            var update = (UpdateExpression)this.Visit(upsert.Update);
-            return this.UpdateUpsert(upsert, check, insert, update);
-        }
-
-        protected UpsertExpression UpdateUpsert(UpsertExpression upsert, Expression check, InsertExpression insert, UpdateExpression update)
-        {
-            if (check != upsert.Check || insert != upsert.Insert || update != upsert.Update)
-            {
-                return new UpsertExpression(check, insert, update);
-            }
-            return upsert;
-        }
-
-        protected virtual Expression VisitDelete(DeleteExpression delete)
+        protected virtual Expression VisitDelete(DeleteCommand delete)
         {
             var table = (TableExpression)this.Visit(delete.Table);
             var where = this.Visit(delete.Where);
             return this.UpdateDelete(delete, table, where);
         }
 
-        protected DeleteExpression UpdateDelete(DeleteExpression delete, TableExpression table, Expression where)
+        protected DeleteCommand UpdateDelete(DeleteCommand delete, TableExpression table, Expression where)
         {
             if (table != delete.Table || where != delete.Where)
             {
-                return new DeleteExpression(table, where);
+                return new DeleteCommand(table, where);
             }
             return delete;
         }
@@ -454,6 +442,60 @@ namespace IQ.Data
                 return new BatchExpression(input, operation, batchSize, stream);
             }
             return batch;
+        }
+
+        protected virtual Expression VisitIf(IFCommand ifx)
+        {
+            var check = this.Visit(ifx.Check);
+            var ifTrue = this.Visit(ifx.IfTrue);
+            var ifFalse = this.Visit(ifx.IfFalse);
+            return this.UpdateIf(ifx, check, ifTrue, ifFalse);
+        }
+
+        protected IFCommand UpdateIf(IFCommand ifx, Expression check, Expression ifTrue, Expression ifFalse)
+        {
+            if (check != ifx.Check || ifTrue != ifx.IfTrue || ifFalse != ifx.IfFalse)
+            {
+                return new IFCommand(check, ifTrue, ifFalse);
+            }
+            return ifx;
+        }
+
+        protected virtual Expression VisitBlock(BlockCommand block)
+        {
+            var commands = this.VisitExpressionList(block.Commands);
+            return this.UpdateBlock(block, commands);
+        }
+
+        protected BlockCommand UpdateBlock(BlockCommand block, IList<Expression> commands)
+        {
+            if (block.Commands != commands)
+            {
+                return new BlockCommand(commands);
+            }
+            return block;
+        }
+
+        protected virtual Expression VisitDeclaration(DeclarationCommand decl)
+        {
+            var variables = this.VisitVariableDeclarations(decl.Variables);
+            var source = (SelectExpression)this.Visit(decl.Source);
+            return this.UpdateDeclaration(decl, variables, source);
+
+        }
+
+        protected DeclarationCommand UpdateDeclaration(DeclarationCommand decl, IEnumerable<VariableDeclaration> variables, SelectExpression source)
+        {
+            if (variables != decl.Variables || source != decl.Source)
+            {
+                return new DeclarationCommand(variables, source);
+            }
+            return decl;
+        }
+
+        protected virtual Expression VisitVariable(VariableExpression vex)
+        {
+            return vex;
         }
 
         protected virtual Expression VisitFunction(FunctionExpression func)
@@ -530,6 +572,29 @@ namespace IQ.Data
                 return alternate.AsReadOnly();
             }
             return columns;
+        }
+
+        protected virtual ReadOnlyCollection<VariableDeclaration> VisitVariableDeclarations(ReadOnlyCollection<VariableDeclaration> decls)
+        {
+            List<VariableDeclaration> alternate = null;
+            for (int i = 0, n = decls.Count; i < n; i++)
+            {
+                VariableDeclaration decl = decls[i];
+                Expression e = this.Visit(decl.Expression);
+                if (alternate == null && e != decl.Expression)
+                {
+                    alternate = decls.Take(i).ToList();
+                }
+                if (alternate != null)
+                {
+                    alternate.Add(new VariableDeclaration(decl.Name, decl.QueryType, e));
+                }
+            }
+            if (alternate != null)
+            {
+                return alternate.AsReadOnly();
+            }
+            return decls;
         }
 
         protected virtual ReadOnlyCollection<OrderExpression> VisitOrderBy(ReadOnlyCollection<OrderExpression> expressions)

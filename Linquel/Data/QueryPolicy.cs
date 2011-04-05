@@ -10,26 +10,15 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Defines query execution & materialization policies. 
     /// </summary>
     public class QueryPolicy
     {
-        QueryMapping mapping;
-
-        public QueryPolicy(QueryMapping mapping)
+        public QueryPolicy()
         {
-            this.mapping = mapping;
-        }
-
-        /// <summary>
-        /// The mapping related to the policy.
-        /// </summary>
-        public QueryMapping Mapping
-        {
-            get { return this.mapping; }
         }
 
         /// <summary>
@@ -59,10 +48,10 @@ namespace IQ.Data
         /// </summary>
         /// <param name="expression"></param>
         /// <returns></returns>
-        public virtual Expression Translate(Expression expression)
+        public virtual Expression Translate(QueryMapping mapping, Expression expression)
         {
             // add included relationships to client projection
-            expression = RelationshipIncluder.Include(this, expression);
+            expression = RelationshipIncluder.Include(mapping, this, expression);
     
             expression = UnusedColumnRemover.Remove(expression);
             expression = RedundantColumnRemover.Remove(expression);
@@ -70,7 +59,7 @@ namespace IQ.Data
             expression = RedundantJoinRemover.Remove(expression);
 
             // convert any singleton (1:1 or n:1) projections into server-side joins (cardinality is preserved)
-            expression = SingletonProjectionRewriter.Rewrite(this.mapping.Language, expression);
+            expression = SingletonProjectionRewriter.Rewrite(mapping.Language, expression);
 
             expression = UnusedColumnRemover.Remove(expression);
             expression = RedundantColumnRemover.Remove(expression);
@@ -78,7 +67,7 @@ namespace IQ.Data
             expression = RedundantJoinRemover.Remove(expression);
 
             // convert projections into client-side joins
-            expression = ClientJoinedProjectionRewriter.Rewrite(this.mapping.Language, expression);
+            expression = ClientJoinedProjectionRewriter.Rewrite(mapping.Language, expression);
 
             expression = UnusedColumnRemover.Remove(expression);
             expression = RedundantColumnRemover.Remove(expression);
@@ -95,9 +84,11 @@ namespace IQ.Data
         /// <param name="projection"></param>
         /// <param name="provider"></param>
         /// <returns></returns>
-        public virtual Expression BuildExecutionPlan(Expression query, Expression provider)
+        public virtual Expression BuildExecutionPlan(QueryMapping mapping, Expression query, Expression provider)
         {
-            return ExecutionBuilder.Build(this, query, provider);
+            return ExecutionBuilder.Build(mapping, this, query, provider);
         }
+
+        public static readonly QueryPolicy Default = new QueryPolicy();
     }
 }

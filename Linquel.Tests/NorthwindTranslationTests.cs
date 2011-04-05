@@ -12,18 +12,29 @@ using System.Xml.Linq;
 
 namespace Test
 {
-    using IQ.Data;
+    using IQToolkit.Data;
 
-    public class NorthwindTranslationTests : NorthwindTestHarness
+    public class NorthwindTranslationTestsCore : NorthwindTestHarness
     {
         public static void Run(Northwind db, bool executeQueries)
         {
-            new NorthwindTranslationTests().RunTests(db, @"..\..\baseline.txt", @"newbase.txt", executeQueries);
+            string prefix = GetBaselinePrefix(db);
+            string baselineFile = prefix + ".base";
+            string newBase = prefix + ".new";
+
+            new NorthwindTranslationTestsCore().RunTests(db, @"..\..\" + baselineFile, newBase, executeQueries);
         }
 
         public static void Run(Northwind db, bool executeQueries, string testName)
         {
-            new NorthwindTranslationTests().RunTest(db, @"..\..\baseline.txt", executeQueries, testName);
+            string prefix = GetBaselinePrefix(db);
+            string baselineFile = prefix + ".base";
+            new NorthwindTranslationTestsCore().RunTest(db, @"..\..\" + baselineFile, executeQueries, testName);
+        }
+
+        protected static string GetBaselinePrefix(Northwind db)
+        {
+            return "NorthwindTranslation_" + db.Provider.GetType().Name;
         }
 
         public void TestWhere()
@@ -39,6 +50,11 @@ namespace Test
         public void TestWhereFalse()
         {
             TestQuery(db.Customers.Where(c => false));
+        }
+
+        public void TestEnumMember()
+        {
+            TestQuery(db.Products.Where(p => p.Discontinued == YesNo.Yes));
         }
 
         public void TestSelectScalar()
@@ -111,7 +127,7 @@ namespace Test
         {
             TestQuery(
                 from c in db.Customers
-                where c.CustomerID == "ALFKI"
+                where c.City == "London"
                 select db.Orders.Where(o => o.CustomerID == c.CustomerID && o.OrderDate.Year == 1997).Select(o => o.OrderID)
                 );
         }
@@ -141,6 +157,32 @@ namespace Test
                 from o in db.Orders
                 where c.CustomerID == o.CustomerID
                 select new { c.ContactName, o.OrderID }
+                );
+        }
+
+        public void TestMultipleJoinsWithJoinConditionsInWhere()
+        {
+            // this should reduce to inner joins
+            TestQuery(
+                from c in db.Customers
+                from o in db.Orders
+                from d in db.OrderDetails
+                where o.CustomerID == c.CustomerID && o.OrderID == d.OrderID
+                where c.CustomerID == "ALFKI"
+                select d.ProductID
+                );
+        }
+
+        public void TestMultipleJoinsWithMissingJoinCondition()
+        {
+            // this should force a naked cross join
+            TestQuery(
+                from c in db.Customers
+                from o in db.Orders
+                from d in db.OrderDetails
+                where o.CustomerID == c.CustomerID /*&& o.OrderID == d.OrderID*/
+                where c.CustomerID == "ALFKI"
+                select d.ProductID
                 );
         }
 
@@ -210,7 +252,6 @@ namespace Test
                 where c.CustomerID == o.CustomerID
                 select new { c.ContactName, o.OrderID }
                 );
-
         }
 
         public void TestGroupBy()
@@ -473,63 +514,6 @@ namespace Test
                 );
         }
 
-        public void TestSkip()
-        {
-            TestQuery(
-                db.Customers.OrderBy(c => c.ContactName).Skip(5)
-                );
-        }
-
-        public void TestSkipTake()
-        {
-            TestQuery(
-                db.Customers.OrderBy(c => c.ContactName).Skip(5).Take(10)
-                );
-        }
-
-        public void TestTakeSkip()
-        {
-            TestQuery(
-                db.Customers.OrderBy(c => c.ContactName).Take(10).Skip(5)
-                );
-        }
-
-        public void TestSkipDistinct()
-        {
-            TestQuery(
-                db.Customers.OrderBy(c => c.ContactName).Skip(5).Distinct()
-                );
-        }
-
-        public void TestDistinctSkip()
-        {
-            TestQuery(
-                db.Customers.Distinct().OrderBy(c => c.ContactName).Skip(5)
-                );
-        }
-
-        public void TestSkipTakeDistinct()
-        {
-            TestQuery(
-                db.Customers.OrderBy(c => c.ContactName).Skip(5).Take(10).Distinct()
-                );
-        }
-
-        public void TestTakeSkipDistinct()
-        {
-            TestQuery(
-                db.Customers.OrderBy(c => c.ContactName).Take(10).Skip(5).Distinct()
-                );
-        }
-
-        public void TestDistinctSkipTake()
-        {
-            TestQuery(
-                db.Customers.Distinct().OrderBy(c => c.ContactName).Skip(5).Take(10)
-                );
-        }
-
-
         public void TestFirst()
         {
             TestQuery(
@@ -688,6 +672,31 @@ namespace Test
                 );
         }
 
+        public void TestSkipTake()
+        {
+            TestQuery(
+                db.Customers.OrderBy(c => c.ContactName).Skip(5).Take(10)
+                );
+        }
+
+        public void TestDistinctSkipTake()
+        {
+            TestQuery(
+                db.Customers.Distinct().OrderBy(c => c.ContactName).Skip(5).Take(10)
+                );
+        }
+
+        public void TestCoalesce()
+        {
+            TestQuery(db.Customers.Where(c => (c.City ?? "Seattle") == "Seattle"));
+        }
+
+        public void TestCoalesce2()
+        {
+            TestQuery(db.Customers.Where(c => (c.City ?? c.Country ?? "Seattle") == "Seattle"));
+        }
+
+
         // framework function tests
 
         public void TestStringLength()
@@ -760,16 +769,6 @@ namespace Test
             TestQuery(db.Customers.Where(c => c.City.ToLower() == "seattle"));
         }
 
-        public void TestStringReplace()
-        {
-            TestQuery(db.Customers.Where(c => c.City.Replace("ea", "ae") == "Saettle"));
-        }
-
-        public void TestStringReplaceChars()
-        {
-            TestQuery(db.Customers.Where(c => c.City.Replace("e", "y") == "Syattly"));
-        }
-
         public void TestStringSubstring()
         {
             TestQuery(db.Customers.Where(c => c.City.Substring(0, 4) == "Seat"));
@@ -778,16 +777,6 @@ namespace Test
         public void TestStringSubstringNoLength()
         {
             TestQuery(db.Customers.Where(c => c.City.Substring(4) == "tle"));
-        }
-
-        public void TestStringRemove()
-        {
-            TestQuery(db.Customers.Where(c => c.City.Remove(1, 2) == "Sttle"));
-        }
-
-        public void TestStringRemoveNoCount()
-        {
-            TestQuery(db.Customers.Where(c => c.City.Remove(4) == "Seat"));
         }
 
         public void TestStringIndexOf()
@@ -851,19 +840,9 @@ namespace Test
             TestQuery(db.Orders.Where(o => o.OrderDate.Second == 47));
         }
 
-        public void TestDateTimeMillisecond()
-        {
-            TestQuery(db.Orders.Where(o => o.OrderDate.Millisecond == 200));
-        }
-
         public void TestDateTimeDayOfWeek()
         {
             TestQuery(db.Orders.Where(o => o.OrderDate.DayOfWeek == DayOfWeek.Friday));
-        }
-
-        public void TestDateTimeDayOfYear()
-        {
-            TestQuery(db.Orders.Where(o => o.OrderDate.DayOfYear == 360));
         }
 
         public void TestMathAbs()
@@ -871,24 +850,9 @@ namespace Test
             TestQuery(db.Orders.Where(o => Math.Abs(o.OrderID) == 10));
         }
 
-        public void TestMathAcos()
-        {
-            TestQuery(db.Orders.Where(o => Math.Acos(o.OrderID) == 0));
-        }
-
-        public void TestMathAsin()
-        {
-            TestQuery(db.Orders.Where(o => Math.Asin(o.OrderID) == 0));
-        }
-
         public void TestMathAtan()
         {
             TestQuery(db.Orders.Where(o => Math.Atan(o.OrderID) == 0));
-        }
-
-        public void TestMathAtan2()
-        {
-            TestQuery(db.Orders.Where(o => Math.Atan2(o.OrderID, 3) == 0));
         }
 
         public void TestMathCos()
@@ -916,19 +880,9 @@ namespace Test
             TestQuery(db.Orders.Where(o => Math.Log(o.OrderID) == 0));
         }
 
-        public void TestMathLog10()
-        {
-            TestQuery(db.Orders.Where(o => Math.Log10(o.OrderID) == 0));
-        }
-
         public void TestMathSqrt()
         {
             TestQuery(db.Orders.Where(o => Math.Sqrt(o.OrderID) == 0));
-        }
-
-        public void TestMathCeiling()
-        {
-            TestQuery(db.Orders.Where(o => Math.Ceiling((double)o.OrderID) == 0));
         }
 
         public void TestMathFloor()
@@ -944,11 +898,6 @@ namespace Test
         public void TestMathRoundDefault()
         {
             TestQuery(db.Orders.Where(o => Math.Round((decimal)o.OrderID) == 0));
-        }
-
-        public void TestMathRoundToPlace()
-        {
-            TestQuery(db.Orders.Where(o => Math.Round((decimal)o.OrderID, 2) == 0));
         }
 
         public void TestMathTruncate()
@@ -1048,19 +997,9 @@ namespace Test
             TestQuery(db.Orders.Where(o => decimal.Divide(o.OrderID, 1.0m) == 1.0m));
         }
 
-        public void TestDecimalRemainder()
-        {
-            TestQuery(db.Orders.Where(o => decimal.Remainder(o.OrderID, 1.0m) == 0.0m));
-        }
-
         public void TestDecimalNegate()
         {
             TestQuery(db.Orders.Where(o => decimal.Negate(o.OrderID) == 1.0m));
-        }
-
-        public void TestDecimalCeiling()
-        {
-            TestQuery(db.Orders.Where(o => decimal.Ceiling(o.OrderID) == 0.0m));
         }
 
         public void TestDecimalFloor()
@@ -1071,11 +1010,6 @@ namespace Test
         public void TestDecimalRoundDefault()
         {
             TestQuery(db.Orders.Where(o => decimal.Round(o.OrderID) == 0m));
-        }
-
-        public void TestDecimalRoundPlaces()
-        {
-            TestQuery(db.Orders.Where(o => decimal.Round(o.OrderID, 2) == 0.00m));
         }
 
         public void TestDecimalTruncate()
@@ -1204,16 +1138,6 @@ namespace Test
             TestQuery(db.Customers.Where(c => null == c.City));
         }
 
-        public void TestCoalsce()
-        {
-            TestQuery(db.Customers.Where(c => (c.City ?? "Seattle") == "Seattle"));
-        }
-
-        public void TestCoalesce2()
-        {
-            TestQuery(db.Customers.Where(c => (c.City ?? c.Country ?? "Seattle") == "Seattle"));
-        }
-
         public void TestConditional()
         {
             TestQuery(db.Orders.Where(o => (o.CustomerID == "ALFKI" ? 1000 : 0) == 1000));
@@ -1307,7 +1231,7 @@ namespace Test
 
         public void TestCustomersIncludeOrders()
         {
-            Northwind nw = new Northwind(this.provider.Connection, this.provider.Log, new TestPolicy("Orders"));
+            Northwind nw = new Northwind(this.provider.Create(this.provider.Mapping, new TestPolicy("Orders"), this.provider.Log));
 
             TestQuery(
                 nw.Customers
@@ -1316,7 +1240,7 @@ namespace Test
 
         public void TestCustomersWhereIncludeOrders()
         {
-            Northwind nw = new Northwind(this.provider.Connection, this.provider.Log, new TestPolicy("Orders"));
+            Northwind nw = new Northwind(this.provider.Create(this.provider.Mapping, new TestPolicy("Orders"), this.provider.Log));
 
             TestQuery(
                 from c in nw.Customers
@@ -1327,7 +1251,7 @@ namespace Test
 
         public void TestCustomersIncludeOrdersAndDetails()
         {
-            Northwind nw = new Northwind(this.provider.Connection, this.provider.Log, new TestPolicy("Orders", "Details"));
+            Northwind nw = new Northwind(this.provider.Create(this.provider.Mapping, new TestPolicy("Orders", "Details"), this.provider.Log));
 
             TestQuery(
                 nw.Customers
@@ -1336,12 +1260,172 @@ namespace Test
 
         public void TestCustomersWhereIncludeOrdersAndDetails()
         {
-            Northwind nw = new Northwind(this.provider.Connection, this.provider.Log, new TestPolicy("Orders", "Details"));
+            Northwind nw = new Northwind(this.provider.Create(this.provider.Mapping, new TestPolicy("Orders", "Details"), this.provider.Log));
 
             TestQuery(
                 from c in nw.Customers
                 where c.City == "London"
                 select c
+                );
+        }
+
+        public void TestInterfaceElementTypeAsGenericConstraint()
+        {
+            TestQuery(
+                GetById(db.Products, 5)
+                );
+        }
+
+        private static IQueryable<T> GetById<T>(IQueryable<T> query, int id) where T : IEntity
+        {
+            return query.Where(x => x.ID == id);
+        }
+
+        public void TestXmlMappingSelectCustomers()
+        {
+            var nw = new NorthwindNoAttributes(this.provider.Create(XmlMapping.FromXml(this.provider.Language, File.ReadAllText(@"Northwind.xml"))));
+
+            TestQuery(
+                from c in db.Customers
+                where c.City == "London"
+                select c.ContactName
+                );
+        }
+    }
+
+
+    public class NorthwindTranslationTests : NorthwindTranslationTestsCore
+    {
+        public static new void Run(Northwind db, bool executeQueries)
+        {
+            string prefix = GetBaselinePrefix(db);
+            string baselineFile = prefix + ".base";
+            string newBase = prefix + ".new";
+
+            new NorthwindTranslationTests().RunTests(db, @"..\..\" + baselineFile, newBase, executeQueries);
+        }
+
+        public static new void Run(Northwind db, bool executeQueries, string testName)
+        {
+            string prefix = GetBaselinePrefix(db);
+            string baselineFile = prefix + ".base";
+            new NorthwindTranslationTests().RunTest(db, @"..\..\" + baselineFile, executeQueries, testName);
+        }
+
+        public void TestSkipDistinct()
+        {
+            TestQuery(
+                db.Customers.OrderBy(c => c.ContactName).Skip(5).Distinct()
+                );
+        }
+
+        public void TestSkipTakeDistinct()
+        {
+            TestQuery(
+                db.Customers.OrderBy(c => c.ContactName).Skip(5).Take(10).Distinct()
+                );
+        }
+
+        public void TestTakeSkipDistinct()
+        {
+            TestQuery(
+                db.Customers.OrderBy(c => c.ContactName).Take(10).Skip(5).Distinct()
+                );
+        }
+
+        public void TestDateTimeMillisecond()
+        {
+            TestQuery(db.Orders.Where(o => o.OrderDate.Millisecond == 200));
+        }
+
+        public void TestDateTimeDayOfYear()
+        {
+            TestQuery(db.Orders.Where(o => o.OrderDate.DayOfYear == 360));
+        }
+
+        public void TestMathAcos()
+        {
+            TestQuery(db.Orders.Where(o => Math.Acos(o.OrderID) == 0));
+        }
+
+        public void TestMathAsin()
+        {
+            TestQuery(db.Orders.Where(o => Math.Asin(o.OrderID) == 0));
+        }
+
+        public void TestMathAtan2()
+        {
+            TestQuery(db.Orders.Where(o => Math.Atan2(o.OrderID, 3) == 0));
+        }
+
+        public void TestMathLog10()
+        {
+            TestQuery(db.Orders.Where(o => Math.Log10(o.OrderID) == 0));
+        }
+
+        public void TestMathCeiling()
+        {
+            TestQuery(db.Orders.Where(o => Math.Ceiling((double)o.OrderID) == 0));
+        }
+
+        public void TestMathRoundToPlace()
+        {
+            TestQuery(db.Orders.Where(o => Math.Round((decimal)o.OrderID, 2) == 0));
+        }
+
+        public void TestDecimalCeiling()
+        {
+            TestQuery(db.Orders.Where(o => decimal.Ceiling(o.OrderID) == 0.0m));
+        }
+
+        public void TestDecimalRoundPlaces()
+        {
+            TestQuery(db.Orders.Where(o => decimal.Round(o.OrderID, 2) == 0.00m));
+        }
+
+        public void TestStringReplace()
+        {
+            TestQuery(db.Customers.Where(c => c.City.Replace("ea", "ae") == "Saettle"));
+        }
+
+        public void TestStringReplaceChars()
+        {
+            TestQuery(db.Customers.Where(c => c.City.Replace("e", "y") == "Syattly"));
+        }
+
+        public void TestStringRemove()
+        {
+            TestQuery(db.Customers.Where(c => c.City.Remove(1, 2) == "Sttle"));
+        }
+
+        public void TestStringRemoveNoCount()
+        {
+            TestQuery(db.Customers.Where(c => c.City.Remove(4) == "Seat"));
+        }
+
+        public void TestDecimalRemainder()
+        {
+            TestQuery(db.Orders.Where(o => decimal.Remainder(o.OrderID, 1.0m) == 0.0m));
+        }
+
+        public void TestSkip()
+        {
+            TestQuery(
+                db.Customers.OrderBy(c => c.ContactName).Skip(5)
+                );
+        }
+
+        public void TestTakeSkip()
+        {
+            TestQuery(
+                db.Customers.OrderBy(c => c.ContactName).Take(10).Skip(5)
+                );
+        }
+
+        public void TestDistinctSkip()
+        {
+            TestQuery(
+                db.Customers.Distinct().OrderBy(c => c.ContactName).Skip(5)
                 );
         }
     }

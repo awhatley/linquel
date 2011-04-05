@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Translates accesses to relationship members into projections or joins

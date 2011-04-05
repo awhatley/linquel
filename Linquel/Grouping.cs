@@ -6,7 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Simple implementation of the IGrouping<TKey, TElement> interface

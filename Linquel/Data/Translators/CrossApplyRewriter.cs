@@ -10,14 +10,14 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Attempts to rewrite cross-apply and outer-apply joins as inner and left-outer joins
     /// </summary>
     public class CrossApplyRewriter : DbExpressionVisitor
     {
-        public static Expression Reduce(Expression expression)
+        public static Expression Rewrite(Expression expression)
         {
             return new CrossApplyRewriter().Visit(expression);
         }

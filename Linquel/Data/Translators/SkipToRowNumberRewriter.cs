@@ -7,20 +7,20 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Rewrites take & skip expressions into uses of TSQL row_number function
     /// </summary>
-    public class SkipRewriter : DbExpressionVisitor
+    public class SkipToRowNumberRewriter : DbExpressionVisitor
     {
-        private SkipRewriter()
+        private SkipToRowNumberRewriter()
         {
         }
 
         public static Expression Rewrite(Expression expression)
         {
-            return new SkipRewriter().Visit(expression);
+            return new SkipToRowNumberRewriter().Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -49,11 +49,11 @@ namespace IQ.Data
                 }
                 else
                 {
-                    where = Expression.GreaterThan(rnCol, select.Skip);
+                    where = rnCol.GreaterThan(select.Skip);
                 }
                 if (newSelect.Where != null)
                 {
-                    where = Expression.And(newSelect.Where, where);
+                    where = newSelect.Where.And(where);
                 }
                 newSelect = newSelect.SetWhere(where);
 

@@ -12,7 +12,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data 
+namespace IQToolkit.Data 
 {
     /// <summary>
     /// A LINQ IQueryable query provider that executes database queries over a DbConnection
@@ -24,14 +24,40 @@ namespace IQ.Data
         QueryMapping mapping;
         QueryLanguage language;
         TextWriter log;
+        int rowsAffected;
 
-        public DbQueryProvider(DbConnection connection, QueryPolicy policy, TextWriter log)
+        public DbQueryProvider(DbConnection connection, QueryMapping mapping, TextWriter log)
+            : this(connection, mapping, QueryPolicy.Default, log)
+        {
+        }
+
+        public DbQueryProvider(DbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
         {
             this.connection = connection;
-            this.policy = policy;
-            this.mapping = policy.Mapping;
+            this.mapping = mapping;
             this.language = mapping.Language;
+            this.policy = policy;
             this.log = log;
+        }
+
+        public DbQueryProvider Create(QueryMapping mapping)
+        {
+            return Create(this.connection, mapping, this.policy, this.log);
+        }
+
+        public DbQueryProvider Create(QueryMapping mapping, TextWriter log)
+        {
+            return Create(this.connection, mapping, this.policy, log);
+        }
+
+        public DbQueryProvider Create(QueryMapping mapping, QueryPolicy policy, TextWriter log)
+        {
+            return Create(this.connection, mapping, policy, log);
+        }
+
+        public virtual DbQueryProvider Create(DbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
+        {
+            return new DbQueryProvider(connection, mapping, policy, log);
         }
 
         public DbConnection Connection
@@ -56,7 +82,12 @@ namespace IQ.Data
 
         public QueryLanguage Language
         {
-            get { return this.language; }
+            get { return this.language; }        
+        }
+
+        public int RowsAffected
+        {
+            get { return this.rowsAffected; }
         }
 
         /// <summary>
@@ -67,15 +98,68 @@ namespace IQ.Data
         /// <returns></returns>
         public override string GetQueryText(Expression expression)
         {
-            Expression translated = this.Translate(expression);
-            var selects = SelectGatherer.Gather(translated).Select(s => this.language.Format(s));
-            return string.Join("\n\n", selects.ToArray());
+            Expression plan = this.GetExecutionPlan(expression);
+            var commands = CommandGatherer.Gather(plan).Select(c => c.CommandText).ToArray();
+            return string.Join("\n\n", commands);
+        }
+
+        public virtual object Convert(object value, Type type)
+        {
+            if (value == null)
+            {
+                return TypeHelper.GetDefault(type);
+            }
+            type = TypeHelper.GetNonNullableType(type);
+            Type vtype = value.GetType();
+            if (type != vtype)
+            {
+                if (type.IsEnum)
+                {
+                    if (vtype == typeof(string))
+                    {
+                        return Enum.Parse(type, (string)value);
+                    }
+                    else
+                    {
+                        Type utype = Enum.GetUnderlyingType(type);
+                        if (utype != vtype)
+                        {
+                            value = System.Convert.ChangeType(value, utype);
+                        }
+                        return Enum.ToObject(type, value);
+                    }
+                }
+                return System.Convert.ChangeType(value, type);
+            }
+            return value;
+        }
+
+        class CommandGatherer : DbExpressionVisitor
+        {
+            List<QueryCommand> commands = new List<QueryCommand>();
+
+            public static ReadOnlyCollection<QueryCommand> Gather(Expression expression)
+            {
+                var gatherer = new CommandGatherer();
+                gatherer.Visit(expression);
+                return gatherer.commands.AsReadOnly();
+            }
+
+            protected override Expression  VisitConstant(ConstantExpression c)
+            {
+                QueryCommand qc = c.Value as QueryCommand;
+                if (qc != null)
+                {
+                    this.commands.Add(qc);
+                }
+                return c;
+            }
         }
 
         public string GetQueryPlan(Expression expression)
         {
             Expression plan = this.GetExecutionPlan(expression);
-            return DbExpressionWriter.WriteToString(plan);
+            return DbExpressionWriter.WriteToString(this.Language, plan);
         }
 
         /// <summary>
@@ -128,7 +212,7 @@ namespace IQ.Data
                     );
             }
 
-            return this.policy.BuildExecutionPlan(translation, provider);
+            return this.policy.BuildExecutionPlan(this.Mapping, translation, provider);
         }
 
         /// <summary>
@@ -145,16 +229,10 @@ namespace IQ.Data
             expression = this.mapping.Translate(expression);
 
             // any policy specific translations or validations
-            expression = this.policy.Translate(expression);
+            expression = this.policy.Translate(this.Mapping, expression);
 
             // any language specific translations or validations
             expression = this.language.Translate(expression);
-
-            // do final reduction
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-            expression = RedundantJoinRemover.Remove(expression);
-            expression = RedundantColumnRemover.Remove(expression);
 
             return expression;
         }
@@ -203,7 +281,7 @@ namespace IQ.Data
             this.LogCommand(command, paramValues);
             DbCommand cmd = this.GetCommand(command, paramValues);
             DbDataReader reader = cmd.ExecuteReader();
-            return Project(reader, fnProjector);
+            return Project(reader, fnProjector, true);
         }
 
         /// <summary>
@@ -212,11 +290,12 @@ namespace IQ.Data
         /// <param name="query"></param>
         /// <param name="paramValues"></param>
         /// <returns></returns>
-        public virtual object ExecuteCommand(QueryCommand query, object[] paramValues)
+        public virtual int ExecuteCommand(QueryCommand query, object[] paramValues)
         {
             this.LogCommand(query, paramValues);
             DbCommand cmd = this.GetCommand(query, paramValues);
-            return cmd.ExecuteNonQuery();
+            this.rowsAffected = cmd.ExecuteNonQuery();
+            return this.rowsAffected;
         }
 
         public virtual IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream)
@@ -238,11 +317,11 @@ namespace IQ.Data
             DbCommand cmd = this.GetCommand(query, null);
             foreach (var paramValues in paramSets)
             {
-                this.LogMessage("");
                 this.LogParameters(query, paramValues);
-                this.SetParameterValues(cmd, paramValues);
-                int result = cmd.ExecuteNonQuery();
-                yield return result;
+                this.LogMessage("");
+                this.SetParameterValues(query, cmd, paramValues);
+                this.rowsAffected = cmd.ExecuteNonQuery();
+                yield return this.rowsAffected;
             }
         }
 
@@ -266,20 +345,26 @@ namespace IQ.Data
             cmd.Prepare();
             foreach (var paramValues in paramSets)
             {
-                this.LogMessage("");
                 this.LogParameters(query, paramValues);
-                this.SetParameterValues(cmd, paramValues);
+                this.LogMessage("");
+                this.SetParameterValues(query, cmd, paramValues);
                 var reader = cmd.ExecuteReader();
-                if (reader.HasRows)
+                try
                 {
-                    reader.Read();
-                    yield return fnProjector(reader);
+                    if (reader.HasRows)
+                    {
+                        reader.Read();
+                        yield return fnProjector(reader);
+                    }
+                    else
+                    {
+                        yield return default(T);
+                    }
                 }
-                else
+                finally
                 {
-                    yield return default(T);
+                    reader.Close();
                 }
-                reader.Close();
             }
         }
 
@@ -290,11 +375,21 @@ namespace IQ.Data
         /// <param name="reader"></param>
         /// <param name="fnProject"></param>
         /// <returns></returns>
-        public virtual IEnumerable<T> Project<T>(DbDataReader reader, Func<DbDataReader, T> fnProjector)
+        public virtual IEnumerable<T> Project<T>(DbDataReader reader, Func<DbDataReader, T> fnProjector, bool closeReader)
         {
-            while (reader.Read())
+            try
             {
-                yield return fnProjector(reader);
+                while (reader.Read())
+                {
+                    yield return fnProjector(reader);
+                }
+            }
+            finally
+            {
+                if (closeReader)
+                {
+                    reader.Close();
+                }
             }
         }
 
@@ -302,7 +397,7 @@ namespace IQ.Data
         /// Get an IEnumerable that will execute the specified query when enumerated
         /// </summary>
         /// <typeparam name="T"></typeparam>
-        /// <param name="query"></param>
+        /// <param name="query"><  /param>
         /// <param name="paramValues"></param>
         /// <returns></returns>
         public virtual IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<DbDataReader, T> fnProjector, object[] paramValues)
@@ -310,9 +405,16 @@ namespace IQ.Data
             this.LogCommand(query, paramValues);
             DbCommand cmd = this.GetCommand(query, paramValues);
             DbDataReader reader = cmd.ExecuteReader();
-            while (reader.Read())
+            try
             {
-                yield return fnProjector(reader);
+                while (reader.Read())
+                {
+                    yield return fnProjector(reader);
+                }
+            }
+            finally
+            {
+                reader.Close();
             }
         }
 
@@ -323,38 +425,44 @@ namespace IQ.Data
         /// <param name="paramNames"></param>
         /// <param name="paramValues"></param>
         /// <returns></returns>
-        protected virtual DbCommand GetCommand(QueryCommand command, object[] paramValues)
+        protected virtual DbCommand GetCommand(QueryCommand query, object[] paramValues)
         {
             // create command object (and fill in parameters)
             DbCommand cmd = this.connection.CreateCommand();
-            cmd.CommandText = command.CommandText;
-            for (int i = 0, n = command.Parameters.Count; i < n; i++)
-            {
-                DbParameter p = cmd.CreateParameter();
-                p.ParameterName = command.Parameters[i].Name;
-                if (paramValues != null)
-                {
-                    p.Value = paramValues[i] ?? DBNull.Value;
-                }
-                cmd.Parameters.Add(p);
-            }
+            cmd.CommandText = query.CommandText;
+            this.SetParameterValues(query, cmd, paramValues);
             return cmd;
         }
 
-        protected virtual void SetParameterValues(DbCommand command, object[] paramValues)
+        protected virtual void SetParameterValues(QueryCommand query, DbCommand command, object[] paramValues)
         {
-            if (paramValues != null)
+            if (query.Parameters.Count > 0 && command.Parameters.Count == 0)
+            {
+                for (int i = 0, n = query.Parameters.Count; i < n; i++)
+                {
+                    this.AddParameter(command, query.Parameters[i], paramValues != null ? paramValues[i] : null);
+                }
+            }
+            else if (paramValues != null)
             {
                 for (int i = 0, n = command.Parameters.Count; i < n; i++)
                 {
                     DbParameter p = command.Parameters[i];
-                    if (p.Direction == System.Data.ParameterDirection.Input 
+                    if (p.Direction == System.Data.ParameterDirection.Input
                      || p.Direction == System.Data.ParameterDirection.InputOutput)
                     {
                         p.Value = paramValues[i] ?? DBNull.Value;
                     }
                 }
             }
+        }
+
+        protected virtual void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        {
+            DbParameter p = command.CreateParameter();
+            p.ParameterName = parameter.Name;
+            p.Value = value ?? DBNull.Value;
+            command.Parameters.Add(p);
         }
 
         protected virtual void GetParameterValues(DbCommand command, object[] paramValues)
@@ -396,12 +504,13 @@ namespace IQ.Data
                 {
                     this.LogParameters(command, paramValues);
                 }
+                this.log.WriteLine();
             }
         }
 
         protected virtual void LogParameters(QueryCommand command, object[] paramValues)
         {
-            if (this.log != null)
+            if (this.log != null && paramValues != null)
             {
                 for (int i = 0, n = command.Parameters.Count; i < n; i++)
                 {
@@ -418,6 +527,17 @@ namespace IQ.Data
                     }
                 }
             }
+        }
+
+        public virtual int ExecuteCommand(string commandText)
+        {
+            if (this.log != null)
+            {
+                this.log.WriteLine(commandText);
+            }
+            DbCommand cmd = this.connection.CreateCommand();
+            cmd.CommandText = commandText;
+            return cmd.ExecuteNonQuery();
         }
     }
 }

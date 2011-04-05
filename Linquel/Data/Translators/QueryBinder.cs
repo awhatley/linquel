@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Converts LINQ query operators to into custom DbExpression's
@@ -256,6 +256,12 @@ namespace IQ.Data
                 case ExpressionType.MemberAccess:
                     return ConvertToSequence(this.BindRelationshipProperty((MemberExpression)expr));
                 default:
+                    var n = this.GetNewExpression(expr);
+                    if (n != null)
+                    {
+                        expr = n;
+                        goto case ExpressionType.New;
+                    }
                     throw new Exception(string.Format("The expression of type '{0}' is not a sequence", expr.Type));
             }
         }
@@ -282,7 +288,7 @@ namespace IQ.Data
                 ProjectionExpression projection = result as ProjectionExpression;
                 if (projection != null && projection.Aggregator == null && !expectedType.IsAssignableFrom(projection.Type))
                 {
-                    LambdaExpression aggregator = this.mapping.GetAggregator(expectedType, projection.Type);
+                    LambdaExpression aggregator = Aggregator.GetAggregator(expectedType, projection.Type);
                     if (aggregator != null)
                     {
                         return new ProjectionExpression(projection.Select, projection.Projector, aggregator);
@@ -375,7 +381,7 @@ namespace IQ.Data
             this.map[resultSelector.Parameters[0]] = outerProjection.Projector;
             this.map[resultSelector.Parameters[1]] = innerProjection.Projector;
             Expression resultExpr = this.Visit(resultSelector.Body);
-            JoinExpression join = new JoinExpression(JoinType.InnerJoin, outerProjection.Select, innerProjection.Select, Expression.Equal(outerKeyExpr, innerKeyExpr));
+            JoinExpression join = new JoinExpression(JoinType.InnerJoin, outerProjection.Select, innerProjection.Select, outerKeyExpr.Equal(innerKeyExpr));
             var alias = this.GetNextAlias();
             ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, outerProjection.Select.Alias, innerProjection.Select.Alias);
             return new ProjectionExpression(
@@ -497,18 +503,34 @@ namespace IQ.Data
                         typeof(Grouping<,>).MakeGenericType(keyExpr.Type, subqueryElemExpr.Type).GetConstructors()[0],
                         new Expression[] { keyExpr, elementSubquery }
                         );
+
+                resultExpr = Expression.Convert(resultExpr, typeof(IGrouping<,>).MakeGenericType(keyExpr.Type, subqueryElemExpr.Type));
             }
 
             ProjectedColumns pc = this.ProjectColumns(resultExpr, alias, projection.Select.Alias);
 
             // make it possible to tie aggregates back to this group-by
-            Expression projectedElementSubquery = ((NewExpression)pc.Projector).Arguments[1];
-            this.groupByMap.Add(projectedElementSubquery, info);
+            NewExpression newResult = this.GetNewExpression(pc.Projector);
+            if (newResult != null && newResult.Type.IsGenericType && newResult.Type.GetGenericTypeDefinition() == typeof(Grouping<,>))
+            {
+                Expression projectedElementSubquery = newResult.Arguments[1];
+                this.groupByMap.Add(projectedElementSubquery, info);
+            }
 
             return new ProjectionExpression(
                 new SelectExpression(alias, pc.Columns, projection.Select, null, null, groupExprs),
                 pc.Projector
                 );
+        }
+
+        private NewExpression GetNewExpression(Expression expression)
+        {
+            // ignore converions 
+            while (expression.NodeType == ExpressionType.Convert || expression.NodeType == ExpressionType.ConvertChecked)
+            {
+                expression = ((UnaryExpression)expression).Operand;
+            }
+            return expression as NewExpression;
         }
 
         private Expression BuildPredicateWithNullsEqual(IEnumerable<Expression> source1, IEnumerable<Expression> source2)
@@ -520,10 +542,10 @@ namespace IQ.Data
             {
                 Expression compare =
                     Expression.Or(
-                        Expression.And(new IsNullExpression(en1.Current), new IsNullExpression(en2.Current)),
-                        Expression.Equal(en1.Current, en2.Current)
+                        new IsNullExpression(en1.Current).And(new IsNullExpression(en2.Current)),
+                        en1.Current.Equal(en2.Current)
                         );
-                result = (result == null) ? compare : Expression.And(result, compare);
+                result = (result == null) ? compare : result.And(compare);
             }
             return result;
         }
@@ -573,7 +595,8 @@ namespace IQ.Data
             if (mcs != null && !hasPredicateArg && argument == null)
             {
                 if (mcs.Method.Name == "Distinct" && mcs.Arguments.Count == 1 &&
-                    (mcs.Method.DeclaringType == typeof(Queryable) || mcs.Method.DeclaringType == typeof(Enumerable)))
+                    (mcs.Method.DeclaringType == typeof(Queryable) || mcs.Method.DeclaringType == typeof(Enumerable))
+                    && this.mapping.Language.AllowDistinctInAggregates)
                 {
                     source = mcs.Arguments[0];
                     isDistinct = true;
@@ -729,11 +752,11 @@ namespace IQ.Data
                     }
                     else if (isAll)
                     {
-                        where = Expression.And(where, expr);
+                        where = where.And(expr);
                     }
                     else
                     {
-                        where = Expression.Or(where, expr);
+                        where = where.Or(expr);
                     }
                 }
                 return this.Visit(where);
@@ -756,7 +779,24 @@ namespace IQ.Data
                 }
                 if (isRoot)
                 {
-                    return GetSingletonSequence(result, "SingleOrDefault");
+                    if (this.mapping.Language.AllowSubqueryInSelectWithoutFrom)
+                    {
+                        return GetSingletonSequence(result, "SingleOrDefault");
+                    }
+                    else
+                    {
+                        // use count aggregate instead of exists
+                        var newSelect = projection.Select.SetColumns(
+                            new[] { new ColumnDeclaration("value", new AggregateExpression(typeof(int), AggregateType.Count, null, false)) }
+                            );
+                        var colx = new ColumnExpression(typeof(int), null, newSelect.Alias, "value");
+                        var exp = isAll 
+                            ? colx.Equal(Expression.Constant(0))
+                            : colx.GreaterThan(Expression.Constant(0));
+                        return new ProjectionExpression(
+                            newSelect, exp, Aggregator.GetAggregator(typeof(bool), typeof(IEnumerable<bool>))
+                            );
+                    }
                 }
                 return result;
             }
@@ -776,7 +816,15 @@ namespace IQ.Data
                 match = this.Visit(match);
                 return new InExpression(match, values);
             }
-            else
+            else if (isRoot && !this.mapping.Language.AllowSubqueryInSelectWithoutFrom)
+            {
+                var p = Expression.Parameter(TypeHelper.GetElementType(source.Type), "x");
+                var predicate = Expression.Lambda(p.Equal(match), p);
+                var exp = Expression.Call(typeof(Queryable), "Any", new Type[] { p.Type }, source, predicate);
+                this.root = exp;
+                return this.Visit(exp);
+            }
+            else 
             {
                 ProjectionExpression projection = this.VisitSequence(source);
                 match = this.Visit(match);
@@ -804,25 +852,25 @@ namespace IQ.Data
 
         private Expression BindInsert(IUpdatableTable upd, Expression instance, LambdaExpression selector)
         {
-            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.TableID);
+            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.EntityID);
             return this.Visit(this.mapping.GetInsertExpression(entity, instance, selector));
         }
 
         private Expression BindUpdate(IUpdatableTable upd, Expression instance, LambdaExpression updateCheck, LambdaExpression resultSelector)
         {
-            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.TableID);
-            return this.Visit(this.mapping.GetUpdateExpression(entity, instance, updateCheck, resultSelector));
+            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.EntityID);
+            return this.Visit(this.mapping.GetUpdateExpression(entity, instance, updateCheck, resultSelector, null));
         }
 
         private Expression BindInsertOrUpdate(IUpdatableTable upd, Expression instance, LambdaExpression updateCheck, LambdaExpression resultSelector)
         {
-            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.TableID);
+            MappingEntity entity = this.mapping.GetEntity(instance.Type, upd.EntityID);
             return this.Visit(this.mapping.GetInsertOrUpdateExpression(entity, instance, updateCheck, resultSelector));
         }
 
         private Expression BindDelete(IUpdatableTable upd, Expression instance, LambdaExpression deleteCheck)
         {
-            MappingEntity entity = this.mapping.GetEntity(instance != null ? instance.Type : deleteCheck.Parameters[0].Type, upd.TableID);
+            MappingEntity entity = this.mapping.GetEntity(instance != null ? instance.Type : deleteCheck.Parameters[0].Type, upd.EntityID);
             return this.Visit(this.mapping.GetDeleteExpression(entity, instance, deleteCheck));
         }
 
@@ -852,9 +900,8 @@ namespace IQ.Data
                 IQueryableTable t = q as IQueryableTable;
                 if (t != null)
                 {
-                    Type rowType = TypeHelper.GetElementType(c.Type);
-                    MappingEntity entity = this.mapping.GetEntity(rowType, t.TableID);
-                    return this.VisitSequence(this.mapping.GetTableQuery(entity));
+                    MappingEntity entity = this.mapping.GetEntity(t.ElementType, t.EntityID, t.EntityType);
+                    return this.VisitSequence(this.mapping.GetQueryExpression(entity));
                 }
                 else
                 {
@@ -892,8 +939,7 @@ namespace IQ.Data
         {
             if (m.Expression != null && m.Expression.NodeType == ExpressionType.Parameter && this.IsQuery(m))
             {
-                // note: this only works if there is only one meta entity per type
-                return this.VisitSequence(this.mapping.GetTableQuery(this.mapping.GetEntity(TypeHelper.GetElementType(m.Type))));
+                return this.VisitSequence(this.mapping.GetQueryExpression(this.mapping.GetEntity(m.Member)));
             }
             Expression source = this.Visit(m.Expression);
             Expression result = BindMember(source, m.Member);
@@ -918,6 +964,10 @@ namespace IQ.Data
                         return Expression.MakeMemberAccess(source, member);
                     }
                     return result;
+
+                case ExpressionType.Convert:
+                    UnaryExpression ux = (UnaryExpression)source;
+                    return BindMember(ux.Operand, member);
 
                 case ExpressionType.MemberInit:
                     MemberInitExpression min = (MemberInitExpression)source;
@@ -1015,17 +1065,17 @@ namespace IQ.Data
 
         private static bool MembersMatch(MemberInfo a, MemberInfo b)
         {
-            if (a == b)
+            if (a.Name == b.Name)
             {
                 return true;
             }
             if (a is MethodInfo && b is PropertyInfo)
             {
-                return a == ((PropertyInfo)b).GetGetMethod();
+                return a.Name == ((PropertyInfo)b).GetGetMethod().Name;
             }
             else if (a is PropertyInfo && b is MethodInfo)
             {
-                return ((PropertyInfo)a).GetGetMethod() == b;
+                return ((PropertyInfo)a).GetGetMethod().Name == b.Name;
             }
             return false;
         }

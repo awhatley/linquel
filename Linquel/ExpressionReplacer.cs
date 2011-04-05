@@ -8,7 +8,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Replaces references to one specific instance of an expression node with another node

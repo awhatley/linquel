@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     public static class DbExpressionExtensions
     {
@@ -33,20 +33,20 @@ namespace IQ.Data
             return select.SetColumns(columns);
         }
 
-        public static string GetAvailableColumnName(this SelectExpression select, string baseName)
+        public static string GetAvailableColumnName(this IList<ColumnDeclaration> columns, string baseName)
         {
             string name = baseName;
             int n = 0;
-            while (!IsUniqueName(select, name))
+            while (!IsUniqueName(columns, name))
             {
                 name = baseName + (n++);
             }
             return name;
         }
 
-        private static bool IsUniqueName(SelectExpression select, string name)
+        private static bool IsUniqueName(IList<ColumnDeclaration> columns, string name)
         {
-            foreach (var col in select.Columns)
+            foreach (var col in columns)
             {
                 if (col.Name == name)
                 {
@@ -58,7 +58,7 @@ namespace IQ.Data
 
         public static ProjectionExpression AddOuterJoinTest(this ProjectionExpression proj)
         {
-            string colName = proj.Select.GetAvailableColumnName("Test");
+            string colName = proj.Select.Columns.GetAvailableColumnName("Test");
             SelectExpression newSource = proj.Select.AddColumn(new ColumnDeclaration(colName, Expression.Constant(1, typeof(int?))));
             Expression newProjector =
                 new OuterJoinedExpression(

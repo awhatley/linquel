@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Determines if two expressions are equivalent. Supports DbExpression nodes.
@@ -74,19 +74,21 @@ namespace IQ.Data
                 case DbExpressionType.NamedValue:
                     return this.CompareNamedValue((NamedValueExpression)a, (NamedValueExpression)b);
                 case DbExpressionType.Insert:
-                    return this.CompareInsert((InsertExpression)a, (InsertExpression)b);
+                    return this.CompareInsert((InsertCommand)a, (InsertCommand)b);
                 case DbExpressionType.Update:
-                    return this.CompareUpdate((UpdateExpression)a, (UpdateExpression)b);
-                case DbExpressionType.Upsert:
-                    return this.CompareUpsert((UpsertExpression)a, (UpsertExpression)b);
+                    return this.CompareUpdate((UpdateCommand)a, (UpdateCommand)b);
                 case DbExpressionType.Delete:
-                    return this.CompareDelete((DeleteExpression)a, (DeleteExpression)b);
+                    return this.CompareDelete((DeleteCommand)a, (DeleteCommand)b);
                 case DbExpressionType.Batch:
                     return this.CompareBatch((BatchExpression)a, (BatchExpression)b);
                 case DbExpressionType.Function:
                     return this.CompareFunction((FunctionExpression)a, (FunctionExpression)b);
                 case DbExpressionType.Entity:
                     return this.CompareEntity((EntityExpression)a, (EntityExpression)b);
+                case DbExpressionType.If:
+                    return this.CompareIf((IFCommand)a, (IFCommand)b);
+                case DbExpressionType.Block:
+                    return this.CompareBlock((BlockCommand)a, (BlockCommand)b);
                 default:
                     return base.Compare(a, b);
             }
@@ -302,7 +304,7 @@ namespace IQ.Data
             }
         }
 
-        protected virtual bool CompareInsert(InsertExpression x, InsertExpression y)
+        protected virtual bool CompareInsert(InsertCommand x, InsertCommand y)
         {
             return this.Compare(x.Table, y.Table)
                 && this.CompareColumnAssignments(x.Assignments, y.Assignments);
@@ -322,17 +324,12 @@ namespace IQ.Data
             return true;
         }
 
-        protected virtual bool CompareUpdate(UpdateExpression x, UpdateExpression y)
+        protected virtual bool CompareUpdate(UpdateCommand x, UpdateCommand y)
         {
             return this.Compare(x.Table, y.Table) && this.Compare(x.Where, y.Where) && this.CompareColumnAssignments(x.Assignments, y.Assignments);
         }
 
-        protected virtual bool CompareUpsert(UpsertExpression x, UpsertExpression y)
-        {
-            return this.Compare(x.Check, y.Check) && this.Compare(x.Insert, y.Insert) && this.Compare(x.Update, y.Update);
-        }
-
-        protected virtual bool CompareDelete(DeleteExpression x, DeleteExpression y)
+        protected virtual bool CompareDelete(DeleteCommand x, DeleteCommand y)
         {
             return this.Compare(x.Table, y.Table) && this.Compare(x.Where, y.Where);
         }
@@ -341,6 +338,23 @@ namespace IQ.Data
         {
             return this.Compare(x.Input, y.Input) && this.Compare(x.Operation, y.Operation)
                 && this.Compare(x.BatchSize, y.BatchSize) && this.Compare(x.Stream, y.Stream);
+        }
+
+        protected virtual bool CompareIf(IFCommand x, IFCommand y)
+        {
+            return this.Compare(x.Check, y.Check) && this.Compare(x.IfTrue, y.IfTrue) && this.Compare(x.IfFalse, y.IfFalse);
+        }
+
+        protected virtual bool CompareBlock(BlockCommand x, BlockCommand y)
+        {
+            if (x.Commands.Count != y.Commands.Count)
+                return false;
+            for (int i = 0, n = x.Commands.Count; i < n; i++)
+            {
+                if (!this.Compare(x.Commands[i], y.Commands[i]))
+                    return false;
+            }
+            return true;
         }
 
         protected virtual bool CompareFunction(FunctionExpression x, FunctionExpression y)

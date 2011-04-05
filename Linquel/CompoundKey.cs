@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace IQ
+namespace IQToolkit
 {
     public class CompoundKey : IEquatable<CompoundKey>
     {

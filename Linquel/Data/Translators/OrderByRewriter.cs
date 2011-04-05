@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Moves order-bys to the outermost select if possible
@@ -18,7 +18,6 @@ namespace IQ.Data
     public class OrderByRewriter : DbExpressionVisitor
     {
         IList<OrderExpression> gatheredOrderings;
-        HashSet<string> uniqueColumns;
         bool isOuterMostSelect;
 
         private OrderByRewriter()
@@ -126,26 +125,31 @@ namespace IQ.Data
                 if (this.gatheredOrderings == null)
                 {
                     this.gatheredOrderings = new List<OrderExpression>();
-                    this.uniqueColumns = new HashSet<string>();
                 }
                 for (int i = newOrderings.Count - 1; i >= 0; i--)
                 {
-                    var ordering = newOrderings[i];
-                    ColumnExpression column = ordering.Expression as ColumnExpression;
+                    this.gatheredOrderings.Insert(0, newOrderings[i]);
+                }
+                // trim off obvious duplicates
+                HashSet<string> unique = new HashSet<string>();
+                for (int i = 0; i < this.gatheredOrderings.Count;) 
+                {
+                    ColumnExpression column = this.gatheredOrderings[i].Expression as ColumnExpression;
                     if (column != null)
                     {
                         string hash = column.Alias + ":" + column.Name;
-                        if (!this.uniqueColumns.Contains(hash))
+                        if (unique.Contains(hash))
                         {
-                            this.gatheredOrderings.Insert(0, ordering);
-                            this.uniqueColumns.Add(hash);
+                            this.gatheredOrderings.RemoveAt(i);
+                            // don't increment 'i', just continue
+                            continue;
+                        }
+                        else
+                        {
+                            unique.Add(hash);
                         }
                     }
-                    else
-                    {
-                        // unless we have full expression tree matching assume its different
-                        this.gatheredOrderings.Insert(0, ordering);
-                    }
+                    i++;
                 }
             }
         }

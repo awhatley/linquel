@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Removes duplicate column declarations that refer to the same underlying column
@@ -21,7 +21,7 @@ namespace IQ.Data
 
         private RedundantColumnRemover()
         {
-            map = new Dictionary<ColumnExpression, ColumnExpression>();
+            this.map = new Dictionary<ColumnExpression, ColumnExpression>();
         }
 
         public static Expression Remove(Expression expression)

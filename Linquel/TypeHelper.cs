@@ -4,10 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Type related helper methods
@@ -46,24 +47,29 @@ namespace IQ
             }
             return null;
         }
+
         public static Type GetSequenceType(Type elementType)
         {
             return typeof(IEnumerable<>).MakeGenericType(elementType);
         }
+
         public static Type GetElementType(Type seqType)
         {
             Type ienum = FindIEnumerable(seqType);
             if (ienum == null) return seqType;
             return ienum.GetGenericArguments()[0];
         }
+
         public static bool IsNullableType(Type type)
         {
             return type != null && type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
         }
+
         public static bool IsNullAssignable(Type type)
         {
             return !type.IsValueType || IsNullableType(type);
         }
+
         public static Type GetNonNullableType(Type type)
         {
             if (IsNullableType(type))
@@ -72,6 +78,21 @@ namespace IQ
             }
             return type;
         }
+
+        public static Type GetNullAssignableType(Type type)
+        {
+            if (!IsNullAssignable(type))
+            {
+                return typeof(Nullable<>).MakeGenericType(type);
+            }
+            return type;
+        }
+
+        public static ConstantExpression GetNullConstant(Type type)
+        {
+            return Expression.Constant(null, GetNullAssignableType(type));
+        }
+
         public static Type GetMemberType(MemberInfo mi)
         {
             FieldInfo fi = mi as FieldInfo;
@@ -81,6 +102,28 @@ namespace IQ
             EventInfo ei = mi as EventInfo;
             if (ei != null) return ei.EventHandlerType;
             return null;
+        }
+
+        public static object GetDefault(Type type)
+        {
+            bool isNullable = !type.IsValueType || TypeHelper.IsNullableType(type);
+            if (!isNullable)
+                return Activator.CreateInstance(type);
+            return null;
+        }
+
+        public static bool IsReadOnly(MemberInfo member)
+        {
+            switch (member.MemberType)
+            {
+                case MemberTypes.Field:
+                    return (((FieldInfo)member).Attributes & FieldAttributes.InitOnly) != 0;
+                case MemberTypes.Property:
+                    PropertyInfo pi = (PropertyInfo)member;
+                    return !pi.CanWrite || pi.GetSetMethod() == null;
+                default:
+                    return true;
+            }
         }
     }
 }

@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Data.Common;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     public class QueryCommand
     {

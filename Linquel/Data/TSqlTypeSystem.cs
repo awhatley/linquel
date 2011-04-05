@@ -11,7 +11,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     public class TSqlTypeSystem : QueryTypeSystem
     {
@@ -28,7 +28,7 @@ namespace IQ.Data
                 int closeParen = typeDeclaration.IndexOf(')', openParen);
                 if (closeParen < openParen) closeParen = typeDeclaration.Length;
 
-                string argstr = typeDeclaration.Substring(openParen + 1, closeParen - (openParen + 2));
+                string argstr = typeDeclaration.Substring(openParen + 1, closeParen - (openParen + 1));
                 args = argstr.Split(',');
                 remainder = typeDeclaration.Substring(closeParen + 1);
             }
@@ -61,10 +61,9 @@ namespace IQ.Data
                 typeName = "Variant";
             }
 
-            SqlDbType dbType = (SqlDbType)Enum.Parse(typeof(SqlDbType), typeName, true);
+            SqlDbType dbType = this.GetSqlType(typeName);
 
             bool isNotNull = (remainder != null) ? remainder.ToUpper().Contains("NOT NULL") : false;
-
 
             int length = 0;
             short precision = 0;
@@ -83,13 +82,13 @@ namespace IQ.Data
                     {
                         length = 80;
                     }
-                    else if (string.Compare(args[1], "max", true) == 0)
+                    else if (string.Compare(args[0], "max", true) == 0)
                     {
                         length = Int32.MaxValue;
                     }
                     else
                     {
-                        length = Int32.Parse(args[1]);
+                        length = Int32.Parse(args[0]);
                     }
                     break;
                 case SqlDbType.Money:
@@ -141,7 +140,17 @@ namespace IQ.Data
                     break;
             }
 
-            return new TSqlType(dbType, isNotNull, length, precision, scale);
+            return NewType(dbType, isNotNull, length, precision, scale);
+        }
+
+        public virtual QueryType NewType(SqlDbType type, bool isNotNull, int length, short precisions, short scale)
+        {
+            return new TSqlType(type, isNotNull, length, precisions, scale);
+        }
+
+        public virtual SqlDbType GetSqlType(string typeName)
+        {
+            return (SqlDbType)Enum.Parse(typeof(SqlDbType), typeName, true);
         }
 
         public override QueryType GetColumnType(Type type)
@@ -151,39 +160,39 @@ namespace IQ.Data
             switch (Type.GetTypeCode(type))
             {
                 case TypeCode.Boolean:
-                    return new TSqlType(SqlDbType.Bit, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.Bit, isNotNull, 0, 0, 0);
                 case TypeCode.SByte:
                 case TypeCode.Byte:
-                    return new TSqlType(SqlDbType.TinyInt, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.TinyInt, isNotNull, 0, 0, 0);
                 case TypeCode.Int16:
                 case TypeCode.UInt16:
-                    return new TSqlType(SqlDbType.SmallInt, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.SmallInt, isNotNull, 0, 0, 0);
                 case TypeCode.Int32:
                 case TypeCode.UInt32:
-                    return new TSqlType(SqlDbType.Int, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.Int, isNotNull, 0, 0, 0);
                 case TypeCode.Int64:
                 case TypeCode.UInt64:
-                    return new TSqlType(SqlDbType.BigInt, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.BigInt, isNotNull, 0, 0, 0);
                 case TypeCode.Single:
                 case TypeCode.Double:
-                    return new TSqlType(SqlDbType.Float, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.Float, isNotNull, 0, 0, 0);
                 case TypeCode.String:
-                    return new TSqlType(SqlDbType.NVarChar, isNotNull, 2000, 0, 0);
+                    return NewType(SqlDbType.NVarChar, isNotNull, 2000, 0, 0);
                 case TypeCode.Char:
-                    return new TSqlType(SqlDbType.NChar, isNotNull, 1, 0, 0);
+                    return NewType(SqlDbType.NChar, isNotNull, 1, 0, 0);
                 case TypeCode.DateTime:
-                    return new TSqlType(SqlDbType.DateTime, isNotNull, 0, 0, 0);
+                    return NewType(SqlDbType.DateTime, isNotNull, 0, 0, 0);
+                case TypeCode.Decimal:
+                    return NewType(SqlDbType.Decimal, isNotNull, 0, 29, 4);
                 default:
                     if (type == typeof(byte[]))
-                        return new TSqlType(SqlDbType.NVarChar, isNotNull, 2000, 0, 0);
+                        return NewType(SqlDbType.VarBinary, isNotNull, 2000, 0, 0);
                     else if (type == typeof(Guid))
-                        return new TSqlType(SqlDbType.UniqueIdentifier, isNotNull, 0, 0, 0);
+                        return NewType(SqlDbType.UniqueIdentifier, isNotNull, 0, 0, 0);
                     else if (type == typeof(DateTimeOffset))
-                        return new TSqlType(SqlDbType.DateTimeOffset, isNotNull, 0, 0, 0);
+                        return NewType(SqlDbType.DateTimeOffset, isNotNull, 0, 0, 0);
                     else if (type == typeof(TimeSpan))
-                        return new TSqlType(SqlDbType.Time, isNotNull, 0, 0, 0);
-                    else if (type == typeof(decimal))
-                        return new TSqlType(SqlDbType.Decimal, isNotNull, 0, 29, 4);
+                        return NewType(SqlDbType.Time, isNotNull, 0, 0, 0);
                     return null;
             }
         }
@@ -251,6 +260,36 @@ namespace IQ.Data
                 default:
                     throw new InvalidOperationException(string.Format("Unhandled sql type: {0}", dbType));
             }
+        }
+
+        public override string GetVariableDeclaration(QueryType type, bool suppressSize)
+        {
+            var sqlType = (TSqlType)type;
+            StringBuilder sb = new StringBuilder();
+            sb.Append(sqlType.SqlDbType.ToString().ToUpper());
+            if (sqlType.Length > 0 && !suppressSize)
+            {
+                if (sqlType.Length == Int32.MaxValue)
+                {
+                    sb.Append("(max)");
+                }
+                else
+                {
+                    sb.AppendFormat("({0})", sqlType.Length);
+                }
+            }
+            else if (sqlType.Precision != 0)
+            {
+                if (sqlType.Scale != 0)
+                {
+                    sb.AppendFormat("({0},{1})", sqlType.Precision, sqlType.Scale);
+                }
+                else
+                {
+                    sb.AppendFormat("({0})", sqlType.Precision);
+                }
+            }
+            return sb.ToString();
         }
     }
 

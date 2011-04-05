@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Compare two expressions to determine if they are equivalent

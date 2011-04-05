@@ -12,7 +12,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Builds an execution plan for a query expression
@@ -20,6 +20,7 @@ namespace IQ.Data
     public class ExecutionBuilder : DbExpressionVisitor
     {
         QueryPolicy policy;
+        QueryMapping mapping;
         Expression provider;
         Scope scope;
         bool isTop = true;
@@ -27,16 +28,18 @@ namespace IQ.Data
         int nReaders = 0;
         List<ParameterExpression> variables = new List<ParameterExpression>();
         List<Expression> initializers = new List<Expression>();
+        Dictionary<string, Expression> variableMap = new Dictionary<string, Expression>();
 
-        private ExecutionBuilder(QueryPolicy policy, Expression provider)
+        private ExecutionBuilder(QueryMapping mapping, QueryPolicy policy, Expression provider)
         {
+            this.mapping = mapping;
             this.policy = policy;
             this.provider = provider;
         }
 
-        public static Expression Build(QueryPolicy policy, Expression expression, Expression provider)
+        public static Expression Build(QueryMapping mapping, QueryPolicy policy, Expression expression, Expression provider)
         {
-            return new ExecutionBuilder(policy, provider).Build(expression);
+            return new ExecutionBuilder(mapping, policy, provider).Build(expression);
         }
 
         private Expression Build(Expression expression)
@@ -70,12 +73,26 @@ namespace IQ.Data
         private static Expression MakeSequence(IList<Expression> expressions)
         {
             Expression last = expressions[expressions.Count - 1];
+            expressions = expressions.Select(e => e.Type.IsValueType ? Expression.Convert(e, typeof(object)) : e).ToList();
             return Expression.Convert(Expression.Call(typeof(ExecutionBuilder), "Sequence", null, Expression.NewArrayInit(typeof(object), expressions)), last.Type);
         }
 
         public static object Sequence(params object[] values) 
         {
             return values[values.Length - 1];
+        }
+
+        public static IEnumerable<R> Batch<T, R>(IEnumerable<T> items, Func<T,R> selector, bool stream)
+        {
+            var result = items.Select(selector);
+            if (!stream)
+            {
+                return result.ToList();
+            }
+            else
+            {
+                return new EnumerateOnce<R>(result);
+            }
         }
 
         private static Expression MakeAssign(ParameterExpression variable, Expression value)
@@ -91,11 +108,12 @@ namespace IQ.Data
 
         private Expression BuildInner(Expression expression)
         {
-            var eb = new ExecutionBuilder(this.policy, this.provider);
+            var eb = new ExecutionBuilder(this.mapping, this.policy, this.provider);
             eb.scope = this.scope;
             eb.receivingMember = this.receivingMember;
             eb.nReaders = this.nReaders;
             eb.nLookup = this.nLookup;
+            eb.variableMap = this.variableMap;
             return eb.Build(expression);
         }
 
@@ -146,10 +164,7 @@ namespace IQ.Data
             if (join.Projection.Projector.NodeType == (ExpressionType)DbExpressionType.OuterJoined)
             {
                 LambdaExpression pred = Expression.Lambda(
-                    Expression.NotEqual(
-                        Expression.PropertyOrField(kvp, "Value"),
-                        Expression.Constant(null, join.Projection.Projector.Type)
-                        ),
+                    Expression.PropertyOrField(kvp, "Value").NotEqual(TypeHelper.GetNullConstant(join.Projection.Projector.Type)),
                     kvp
                     );
                 execution = Expression.Call(typeof(Enumerable), "Where", new Type[] { kvp.Type }, execution, pred);
@@ -189,10 +204,19 @@ namespace IQ.Data
             }
         }
 
+        protected virtual Expression Parameterize(Expression expression)
+        {
+            if (this.variableMap.Count > 0)
+            {
+                expression = VariableSubstitutor.Substitute(this.variableMap, expression);
+            }
+            return this.mapping.Language.Parameterize(expression);
+        }
+
         private Expression ExecuteProjection(ProjectionExpression projection, bool okayToDefer)
         {
             // parameterize query
-            projection = (ProjectionExpression)this.policy.Mapping.Language.Parameterize(projection);
+            projection = (ProjectionExpression)this.Parameterize(projection);
 
             if (this.scope != null)
             {
@@ -200,7 +224,7 @@ namespace IQ.Data
                 projection = (ProjectionExpression)OuterParameterizer.Parameterize(this.scope.Alias, projection);
             }
 
-            string commandText = this.policy.Mapping.Language.Format(projection.Select);
+            string commandText = this.mapping.Language.Format(projection.Select);
             ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(projection.Select);
             QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
             Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
@@ -239,25 +263,39 @@ namespace IQ.Data
 
         protected override Expression VisitBatch(BatchExpression batch)
         {
-            // parameterize query
-            Expression operation = this.policy.Mapping.Language.Parameterize(batch.Operation.Body);
+            if (this.mapping.Language.AllowsMultipleCommands || !IsMultipleCommands(batch.Operation.Body as CommandExpression))
+            {
+                return this.BuildExecuteBatch(batch);
+            }
+            else
+            {
+                var source = this.Visit(batch.Input);
+                var op = this.Visit(batch.Operation.Body);
+                var fn = Expression.Lambda(op, batch.Operation.Parameters[1]);
+                return Expression.Call(this.GetType(), "Batch", new Type[] {TypeHelper.GetElementType(source.Type), batch.Operation.Body.Type}, source, fn, batch.Stream);
+            }
+        }
 
-            string commandText = this.policy.Mapping.Language.Format(operation);
+        protected virtual Expression BuildExecuteBatch(BatchExpression batch)
+        {
+            // parameterize query
+            Expression operation = this.Parameterize(batch.Operation.Body);
+
+            string commandText = this.mapping.Language.Format(operation);
             var namedValues = NamedValueGatherer.Gather(operation);
             QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
             Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
 
             Expression paramSets = Expression.Call(typeof(Enumerable), "Select", new Type[] { batch.Operation.Parameters[1].Type, typeof(object[]) },
                 batch.Input,
-                Expression.Lambda(Expression.NewArrayInit(typeof(object), values), new [] { batch.Operation.Parameters[1] })
+                Expression.Lambda(Expression.NewArrayInit(typeof(object), values), new[] { batch.Operation.Parameters[1] })
                 );
 
             Expression plan = null;
 
-            CommandWithResultExpression cwr = operation as CommandWithResultExpression;
-            if (cwr != null && cwr.Result != null)
+            ProjectionExpression projection = ProjectionFinder.FindProjection(operation);
+            if (projection != null)
             {
-                ProjectionExpression projection = (ProjectionExpression)cwr.Result;
                 var saveScope = this.scope;
                 ParameterExpression reader = Expression.Parameter(typeof(DbDataReader), "r" + nReaders++);
                 this.scope = new Scope(this.scope, reader, projection.Select.Alias, projection.Select.Columns);
@@ -290,64 +328,156 @@ namespace IQ.Data
 
         protected override Expression VisitCommand(CommandExpression command)
         {
-            switch ((DbExpressionType)command.NodeType)
+            if (this.mapping.Language.AllowsMultipleCommands || !IsMultipleCommands(command))
             {
-                case DbExpressionType.Insert:
-                case DbExpressionType.Update:
-                case DbExpressionType.Upsert:
-                    return this.ExecuteCommandWithResult((CommandWithResultExpression)command);
-                case DbExpressionType.Delete:
-                    return this.ExecuteCommand(command);
-                default:
-                    return base.VisitCommand(command);
+                return this.BuildExecuteCommand(command);
+            }
+            else
+            {
+                return base.VisitCommand(command);
             }
         }
 
-        private Expression ExecuteCommand(Expression expression)
+        protected virtual bool IsMultipleCommands(CommandExpression command)
+        {
+            if (command == null)
+                return false;
+            switch ((DbExpressionType)command.NodeType)
+            {
+                case DbExpressionType.Insert:
+                case DbExpressionType.Delete:
+                case DbExpressionType.Update:
+                    return false;
+                default:
+                    return true;
+            }
+        }
+
+        protected override Expression VisitInsert(InsertCommand insert)
+        {
+            return this.BuildExecuteCommand(insert);
+        }
+
+        protected override Expression VisitUpdate(UpdateCommand update)
+        {
+            return this.BuildExecuteCommand(update);
+        }
+
+        protected override Expression VisitDelete(DeleteCommand delete)
+        {
+            return this.BuildExecuteCommand(delete);
+        }
+
+        protected override Expression VisitBlock(BlockCommand block)
+        {
+            return MakeSequence(this.VisitExpressionList(block.Commands));
+        }
+
+        protected override Expression VisitIf(IFCommand ifx)
+        {
+            var test = 
+                Expression.Condition(
+                    ifx.Check, 
+                    ifx.IfTrue, 
+                    ifx.IfFalse != null 
+                        ? ifx.IfFalse 
+                        : ifx.IfTrue.Type == typeof(int) 
+                            ? (Expression)Expression.Property(this.provider, "RowsAffected") 
+                            : (Expression)Expression.Constant(TypeHelper.GetDefault(ifx.IfTrue.Type), ifx.IfTrue.Type)
+                            );
+            return this.Visit(test);
+        }
+
+        protected override Expression VisitFunction(FunctionExpression func)
+        {
+            if (func.Name == "@@ROWCOUNT")
+            {
+                return Expression.Property(this.provider, "RowsAffected");
+            }
+            return base.VisitFunction(func);
+        }
+
+        protected override Expression VisitExists(ExistsExpression exists)
+        {
+            // how did we get here? Translate exists into count query
+            var newSelect = exists.Select.SetColumns(
+                new[] { new ColumnDeclaration("value", new AggregateExpression(typeof(int), AggregateType.Count, null, false)) }
+                );
+
+            var projection = 
+                new ProjectionExpression(
+                    newSelect,
+                    new ColumnExpression(typeof(int), null, newSelect.Alias, "value"),
+                    Aggregator.GetAggregator(typeof(int), typeof(IEnumerable<int>))
+                    );
+
+            var expression = projection.GreaterThan(Expression.Constant(0));
+
+            return this.Visit(expression);
+        }
+
+        protected override Expression VisitDeclaration(DeclarationCommand decl)
+        {
+            if (decl.Source != null)
+            {
+                // make query that returns all these declared values as an object[]
+                var projection = new ProjectionExpression(
+                    decl.Source,
+                    Expression.NewArrayInit(
+                        typeof(object),
+                        decl.Variables.Select(v => v.Expression.Type.IsValueType
+                            ? Expression.Convert(v.Expression, typeof(object))
+                            : v.Expression).ToArray()
+                        ),
+                    Aggregator.GetAggregator(typeof(object[]), typeof(IEnumerable<object[]>))
+                    );
+
+                // create execution variable to hold the array of declared variables
+                var vars = Expression.Parameter(typeof(object[]), "vars");
+                this.variables.Add(vars);
+                this.initializers.Add(Expression.Constant(null, typeof(object[])));
+
+                // create subsitution for each variable (so it will find the variable value in the new vars array)
+                for (int i = 0, n = decl.Variables.Count; i < n; i++)
+                {
+                    var v = decl.Variables[i];
+                    NamedValueExpression nv = new NamedValueExpression(
+                        v.Name, v.QueryType,
+                        Expression.Convert(Expression.ArrayIndex(vars, Expression.Constant(i)), v.Expression.Type)
+                        );
+                    this.variableMap.Add(v.Name, nv);
+                }
+
+                // make sure the execution of the select stuffs the results into the new vars array
+                return MakeAssign(vars, this.Visit(projection));
+            }
+
+            // probably bad if we get here since we must not allow mulitple commands
+            throw new InvalidOperationException("Declaration query not allowed for this langauge");
+        }
+        
+        protected virtual Expression BuildExecuteCommand(CommandExpression command)
         {
             // parameterize query
-            expression = this.policy.Mapping.Language.Parameterize(expression);
+            var expression = this.Parameterize(command);
 
-            string commandText = this.policy.Mapping.Language.Format(expression);
+            string commandText = this.mapping.Language.Format(expression);
             ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(expression);
-            QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
+            QueryCommand qc = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
             Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
 
+            ProjectionExpression projection = ProjectionFinder.FindProjection(expression);
+            if (projection != null)
+            {
+                return this.ExecuteProjection(projection, false, qc, values);
+            }
+
             Expression plan = Expression.Call(this.provider, "ExecuteCommand", null,
-                Expression.Constant(command),
+                Expression.Constant(qc),
                 Expression.NewArrayInit(typeof(object), values)
                 );
 
             return plan;
-        }
-
-        private Expression ExecuteCommandWithResult(CommandWithResultExpression expression)
-        {
-            if (expression.Result == null)
-            {
-                return this.ExecuteCommand(expression);
-            }
-            else
-            {
-                // parameterize query
-                expression = (CommandWithResultExpression) this.policy.Mapping.Language.Parameterize(expression);
-
-                string commandText = this.policy.Mapping.Language.Format(expression);
-                ReadOnlyCollection<NamedValueExpression> namedValues = NamedValueGatherer.Gather(expression);
-                QueryCommand command = new QueryCommand(commandText, namedValues.Select(v => new QueryParameter(v.Name, v.Type, v.QueryType)), null);
-                Expression[] values = namedValues.Select(v => Expression.Convert(this.Visit(v.Value), typeof(object))).ToArray();
-
-                ProjectionExpression proj = expression.Result as ProjectionExpression;
-                if (proj != null)
-                {
-                    return this.ExecuteProjection(proj, false, command, values);
-                }
-                else
-                {
-                    // unhandled result expression kinds
-                    throw new NotImplementedException();
-                }
-            }
         }
 
         protected override Expression VisitEntity(EntityExpression entity)
@@ -365,11 +495,27 @@ namespace IQ.Data
             {
                 return Expression.Condition(
                     Expression.Call(reader, "IsDbNull", null, Expression.Constant(iOrdinal)),
-                    Expression.Constant(null, outer.Type),
+                    Expression.Constant(TypeHelper.GetDefault(outer.Type), outer.Type),
                     expr
                     );
             }
             return expr;
+        }
+
+        public static T GetValue<T>(DbQueryProvider provider, DbDataReader reader, int ordinal)
+        {
+            if (reader.IsDBNull(ordinal))
+            {
+                return default(T);
+            }
+            object value = reader.GetValue(ordinal);
+            Type ttype = typeof(T);
+            Type vtype = value.GetType();
+            if (vtype != ttype)
+            {
+                return (T)provider.Convert(value, ttype);
+            }
+            return (T)value;
         }
 
         protected override Expression VisitColumn(ColumnExpression column)
@@ -377,32 +523,9 @@ namespace IQ.Data
             ParameterExpression reader;
             int iOrdinal;
 
-            if (this.scope.TryGetValue(column, out reader, out iOrdinal))
+            if (this.scope != null && this.scope.TryGetValue(column, out reader, out iOrdinal))
             {
-                Expression defvalue;
-                if (!column.Type.IsValueType || TypeHelper.IsNullableType(column.Type))
-                {
-                    defvalue = Expression.Constant(null, column.Type);
-                }
-                else
-                {
-                    defvalue = Expression.Constant(Activator.CreateInstance(column.Type), column.Type);
-                }
-
-                // this sucks, but since we don't track true SQL types through the query, and ADO throws exception if you
-                // call the wrong accessor, the best we can do is call GetValue and Convert.ChangeType
-                Expression value = Expression.Convert(
-                    Expression.Call(typeof(System.Convert), "ChangeType", null,
-                        Expression.Call(reader, "GetValue", null, Expression.Constant(iOrdinal)),
-                        Expression.Constant(TypeHelper.GetNonNullableType(column.Type))
-                        ),
-                        column.Type
-                    );
-
-                return Expression.Condition(
-                    Expression.Call(reader, "IsDbNull", null, Expression.Constant(iOrdinal)),
-                    defvalue, value
-                    );
+                return Expression.Call(this.GetType(), "GetValue", new Type[] { column.Type }, this.provider, reader, Expression.Constant(iOrdinal));
             }
             else
             {
@@ -498,6 +621,49 @@ namespace IQ.Data
                     this.columns.Add(column.Name, column);
                 }
                 return column;
+            }
+        }
+
+        class ProjectionFinder : DbExpressionVisitor
+        {
+            ProjectionExpression found = null;
+
+            internal static ProjectionExpression FindProjection(Expression expression)
+            {
+                var finder = new ProjectionFinder();
+                finder.Visit(expression);
+                return finder.found;
+            }
+
+            protected override Expression VisitProjection(ProjectionExpression proj)
+            {
+                this.found = proj;
+                return proj;
+            }
+        }
+
+        class VariableSubstitutor : DbExpressionVisitor
+        {
+            Dictionary<string, Expression> map;
+
+            private VariableSubstitutor(Dictionary<string, Expression> map)
+            {
+                this.map = map;
+            }
+
+            public static Expression Substitute(Dictionary<string, Expression> map, Expression expression)
+            {
+                return new VariableSubstitutor(map).Visit(expression);
+            }
+
+            protected override Expression VisitVariable(VariableExpression vex)
+            {
+                Expression sub;
+                if (this.map.TryGetValue(vex.Name, out sub))
+                {
+                    return sub;
+                }
+                return vex;
             }
         }
     }

@@ -14,7 +14,7 @@ using System.Xml.Linq;
 
 namespace Test
 {
-    using IQ.Data;
+    using IQToolkit.Data;
 
     public class TestHarness
     {
@@ -50,6 +50,12 @@ namespace Test
             this.RunTests(provider, baselineFile, newBaselineFile, executeQueries, this.GetType().GetMethods().Where(m => m.Name.StartsWith("Test")).ToArray());
         }
 
+        class TestFailure
+        {
+            internal string TestName;
+            internal string Reason;
+        }
+
         protected void RunTests(DbQueryProvider provider, string baselineFile, string newBaselineFile, bool executeQueries, MethodInfo[] tests)
         {
             this.provider = provider;
@@ -68,6 +74,7 @@ namespace Test
 
             int iTest = 0;
             int iPassed = 0;
+            var failures = new List<TestFailure>();
             ConsoleColor originalColor = Console.ForegroundColor;
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("Running tests: {0}", this.GetType().Name);
@@ -81,7 +88,7 @@ namespace Test
                     string testName = method.Name.Substring(4);
                     bool passed = false;
                     Console.WriteLine();
-                    Setup();
+                    SetupTest();
                     string reason = "";
                     try
                     {
@@ -98,7 +105,12 @@ namespace Test
                     }
                     finally
                     {
-                        Teardown();
+                        TeardownTest();
+                    }
+
+                    if (!passed)
+                    {
+                        failures.Add(new TestFailure { TestName = method.Name, Reason = reason });
                     }
 
                     Console.ForegroundColor = passed ? ConsoleColor.Green : ConsoleColor.Red;
@@ -131,16 +143,28 @@ namespace Test
                 Console.WriteLine("Total tests passed: {0}", iPassed);
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("Total tests failed: {0}", iTest - iPassed);
+                foreach (var failure in failures)
+                {
+                    Console.WriteLine("  {0}: {1}", failure.TestName, failure.Reason != null ? failure.Reason : string.Empty);
+                }
             }
             Console.ForegroundColor = originalColor;
             Console.WriteLine();
         }
 
-        protected virtual void Setup()
+        protected virtual void SetupTest()
         {
         }
 
-        protected virtual void Teardown()
+        protected virtual void TeardownTest()
+        {
+        }
+
+        protected virtual void SetupSuite()
+        {
+        }
+
+        protected virtual void TeardownSuite()
         {
         }
 
@@ -208,7 +232,7 @@ namespace Test
                 if (pro.Log != null)
                 {
                     Console.ForegroundColor = ConsoleColor.Gray;
-                    DbExpressionWriter.Write(pro.Log, query);
+                    DbExpressionWriter.Write(pro.Log, pro.Language, query);
                     pro.Log.WriteLine();
                     pro.Log.WriteLine("==>");
                 }
@@ -226,26 +250,6 @@ namespace Test
                     Console.ForegroundColor = ConsoleColor.Gray;
                     Console.WriteLine(query.ToString());
                     throw new TestFailureException(e.Message);
-                }
-
-                string baseline = null;
-                if (this.baselines != null && this.baselines.TryGetValue(baselineKey, out baseline))
-                {
-                    string trimAct = TrimExtraWhiteSpace(queryText).Trim();
-                    string trimBase = TrimExtraWhiteSpace(baseline).Trim();
-                    if (trimAct != trimBase)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Gray;
-                        Console.WriteLine(queryText);
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("Query translation does not match baseline:");
-                        WriteDifferences(trimAct, trimBase);
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("---- baseline ----");
-                        WriteDifferences(trimBase, trimAct);
-                        Console.ForegroundColor = ConsoleColor.Yellow;
-                        throw new TestFailureException("Translation differed from baseline.");
-                    }
                 }
 
                 if (this.executeQueries)
@@ -288,6 +292,28 @@ namespace Test
                         Console.ForegroundColor = ConsoleColor.Gray;
                         Console.WriteLine(queryText);
                         throw new TestFailureException(null);
+                    }
+                }
+
+                string baseline = null;
+                if (this.baselines != null && this.baselines.TryGetValue(baselineKey, out baseline))
+                {
+                    string trimAct = TrimExtraWhiteSpace(queryText).Trim();
+                    string trimBase = TrimExtraWhiteSpace(baseline).Trim();
+                    if (trimAct != trimBase)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("Query translation does not match baseline:");
+                        Console.ForegroundColor = ConsoleColor.Gray;
+                        Console.WriteLine(queryText);
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("---- current ----");
+                        WriteDifferences(trimAct, trimBase);
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        Console.WriteLine("---- baseline ----");
+                        WriteDifferences(trimBase, trimAct);
+                        Console.ForegroundColor = ConsoleColor.Yellow;
+                        throw new TestFailureException("Translation differed from baseline.");
                     }
                 }
 
@@ -379,6 +405,21 @@ namespace Test
         protected void AssertFalse(bool value)
         {
             this.AssertValue(false, value);
+        }
+
+        protected bool Exec(string commandText)
+        {
+            var cmd = this.provider.Connection.CreateCommand();
+            cmd.CommandText = commandText;
+            try
+            {
+                cmd.ExecuteNonQuery();
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
     }
 }

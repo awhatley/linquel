@@ -5,7 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Common interface for controlling defer-loadable types

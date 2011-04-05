@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Rewrite aggregate expressions, moving them into same select expression that has the group-by clause

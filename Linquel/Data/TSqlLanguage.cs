@@ -12,15 +12,18 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// TSQL specific QueryLanguage
     /// </summary>
     public class TSqlLanguage : QueryLanguage
     {
-        SqlCommandBuilder cb = new SqlCommandBuilder();
         TSqlTypeSystem typeSystem = new TSqlTypeSystem();
+
+        public TSqlLanguage()
+        {
+        }
 
         public override QueryTypeSystem TypeSystem
         {
@@ -29,7 +32,40 @@ namespace IQ.Data
 
         public override string Quote(string name)
         {
-            return cb.QuoteIdentifier(name);
+            if (name.StartsWith("[") && name.EndsWith("]"))
+            {
+                return name;
+            }
+            else if (name.IndexOf('.') > 0)
+            {
+                return "[" + string.Join("].[", name.Split(splitChars, StringSplitOptions.RemoveEmptyEntries)) + "]";
+            }
+            else
+            {
+                return "[" + name + "]";
+            }
+        }
+
+        private static readonly char[] splitChars = new char[] { '.' };
+
+        public override bool AllowsMultipleCommands
+        {
+            get { return true; }
+        }
+
+        public override bool AllowSubqueryInSelectWithoutFrom
+        {
+            get { return true; }
+        }
+
+        public override bool AllowDistinctInAggregates
+        {
+            get { return true; }
+        }
+
+        public override Expression GetGeneratedIdExpression(MemberInfo member)
+        {
+            return new FunctionExpression(TypeHelper.GetMemberType(member), "SCOPE_IDENTITY()", null);
         }
 
         public override Expression Translate(Expression expression)
@@ -40,7 +76,7 @@ namespace IQ.Data
             expression = base.Translate(expression);
 
             // convert skip/take info into RowNumber pattern
-            expression = SkipRewriter.Rewrite(expression);
+            expression = SkipToRowNumberRewriter.Rewrite(expression);
 
             // fix up any order-by's we may have changed
             expression = OrderByRewriter.Rewrite(expression);
@@ -50,12 +86,21 @@ namespace IQ.Data
 
         public override string Format(Expression expression)
         {
-            return TSqlFormatter.Format(expression);
+            return TSqlFormatter.Format(expression, this);
         }
 
-        public override Expression GetGeneratedIdExpression(MemberInfo member)
+        private static TSqlLanguage _default;
+
+        public static TSqlLanguage Default
         {
-            return new FunctionExpression(TypeHelper.GetMemberType(member), "SCOPE_IDENTITY()", null);
+            get
+            {
+                if (_default == null)
+                {
+                    System.Threading.Interlocked.CompareExchange(ref _default, new TSqlLanguage(), null);
+                }
+                return _default;
+            }
         }
     }
 }

@@ -8,147 +8,28 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Formats a query expression into TSQL language syntax
     /// </summary>
-    public class TSqlFormatter : DbExpressionVisitor
+    public class TSqlFormatter : SqlFormatter
     {
-        StringBuilder sb;
-        int indent = 2;
-        int depth;
-        Dictionary<TableAlias, string> aliases;
-        bool hideColumnAliases;
-        bool hideTableAliases;
-
-        private TSqlFormatter()
+        protected TSqlFormatter(QueryLanguage language)
+            : base(language)
         {
-            this.sb = new StringBuilder();
-            this.aliases = new Dictionary<TableAlias, string>();
         }
 
-        public static string Format(Expression expression)
+        public static new string Format(Expression expression)
         {
-            TSqlFormatter formatter = new TSqlFormatter();
+            return Format(expression, new TSqlLanguage());
+        }
+
+        public static string Format(Expression expression, QueryLanguage language)
+        {
+            TSqlFormatter formatter = new TSqlFormatter(language);
             formatter.Visit(expression);
-            return formatter.sb.ToString();
-        }
-
-        protected enum Indentation
-        {
-            Same,
-            Inner,
-            Outer
-        }
-
-        internal int IndentationWidth
-        {
-            get { return this.indent; }
-            set { this.indent = value; }
-        }
-
-        private void AppendNewLine(Indentation style)
-        {
-            sb.AppendLine();
-            this.Indent(style);
-            for (int i = 0, n = this.depth * this.indent; i < n; i++)
-            {
-                sb.Append(" ");
-            }
-        }
-
-        private void Indent(Indentation style)
-        {
-            if (style == Indentation.Inner)
-            {
-                this.depth++;
-            }
-            else if (style == Indentation.Outer)
-            {
-                this.depth--;
-                System.Diagnostics.Debug.Assert(this.depth >= 0);
-            }
-        }
-
-        protected override Expression Visit(Expression exp)
-        {
-            if (exp == null) return null;
-
-            // check for supported node types first 
-            // non-supported ones should not be visited (as they would produce bad SQL)
-            switch (exp.NodeType)
-            {
-                case ExpressionType.Negate:
-                case ExpressionType.NegateChecked:
-                case ExpressionType.Not:
-                case ExpressionType.Convert:
-                case ExpressionType.ConvertChecked:
-                case ExpressionType.UnaryPlus:
-                case ExpressionType.Add:
-                case ExpressionType.AddChecked:
-                case ExpressionType.Subtract:
-                case ExpressionType.SubtractChecked:
-                case ExpressionType.Multiply:
-                case ExpressionType.MultiplyChecked:
-                case ExpressionType.Divide:
-                case ExpressionType.Modulo:
-                case ExpressionType.And:
-                case ExpressionType.AndAlso:
-                case ExpressionType.Or:
-                case ExpressionType.OrElse:
-                case ExpressionType.LessThan:
-                case ExpressionType.LessThanOrEqual:
-                case ExpressionType.GreaterThan:
-                case ExpressionType.GreaterThanOrEqual:
-                case ExpressionType.Equal:
-                case ExpressionType.NotEqual:
-                case ExpressionType.Coalesce:
-                case ExpressionType.RightShift:
-                case ExpressionType.LeftShift:
-                case ExpressionType.ExclusiveOr:
-                case ExpressionType.Power:
-                case ExpressionType.Conditional:
-                case ExpressionType.Constant:
-                case ExpressionType.MemberAccess:
-                case ExpressionType.Call:
-                case ExpressionType.New:
-                case (ExpressionType)DbExpressionType.Table:
-                case (ExpressionType)DbExpressionType.Column:
-                case (ExpressionType)DbExpressionType.Select:
-                case (ExpressionType)DbExpressionType.Join:
-                case (ExpressionType)DbExpressionType.Aggregate:
-                case (ExpressionType)DbExpressionType.Scalar:
-                case (ExpressionType)DbExpressionType.Exists:
-                case (ExpressionType)DbExpressionType.In:
-                case (ExpressionType)DbExpressionType.AggregateSubquery:
-                case (ExpressionType)DbExpressionType.IsNull:
-                case (ExpressionType)DbExpressionType.Between:
-                case (ExpressionType)DbExpressionType.RowCount:
-                case (ExpressionType)DbExpressionType.Projection:
-                case (ExpressionType)DbExpressionType.NamedValue:
-                case (ExpressionType)DbExpressionType.Insert:
-                case (ExpressionType)DbExpressionType.Update:
-                case (ExpressionType)DbExpressionType.Delete:
-                case (ExpressionType)DbExpressionType.Upsert:
-                case (ExpressionType)DbExpressionType.Function:
-                    return base.Visit(exp);
-
-                case ExpressionType.ArrayLength:
-                case ExpressionType.Quote:
-                case ExpressionType.TypeAs:
-                case ExpressionType.ArrayIndex:
-                case ExpressionType.TypeIs:
-                case ExpressionType.Parameter:
-                case ExpressionType.Lambda:
-                case ExpressionType.NewArrayInit:
-                case ExpressionType.NewArrayBounds:
-                case ExpressionType.Invoke:
-                case ExpressionType.MemberInit:
-                case ExpressionType.ListInit:
-                default:
-                    throw new Exception(string.Format("The LINQ expression node of type {0} is not supported", exp.NodeType));
-            }
+            return formatter.ToString();
         }
 
         protected override Expression VisitMemberAccess(MemberExpression m)
@@ -158,9 +39,9 @@ namespace IQ.Data
                 switch (m.Member.Name)
                 {
                     case "Length":
-                        sb.Append("LEN(");
+                        this.Write("LEN(");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                 }
             }
@@ -169,53 +50,53 @@ namespace IQ.Data
                 switch (m.Member.Name)
                 {
                     case "Day":
-                        sb.Append("DAY(");
+                        this.Write("DAY(");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Month":
-                        sb.Append("MONTH(");
+                        this.Write("MONTH(");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Year":
-                        sb.Append("YEAR(");
+                        this.Write("YEAR(");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Hour":
-                        sb.Append("DATEPART(hour, ");
+                        this.Write("DATEPART(hour, ");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Minute":
-                        sb.Append("DATEPART(minute, ");
+                        this.Write("DATEPART(minute, ");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Second":
-                        sb.Append("DATEPART(second, ");
+                        this.Write("DATEPART(second, ");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Millisecond":
-                        sb.Append("DATEPART(millisecond, ");
+                        this.Write("DATEPART(millisecond, ");
                         this.Visit(m.Expression);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "DayOfWeek":
-                        sb.Append("(DATEPART(weekday, ");
+                        this.Write("(DATEPART(weekday, ");
                         this.Visit(m.Expression);
-                        sb.Append(") - 1)");
+                        this.Write(") - 1)");
                         return m;
                     case "DayOfYear":
-                        sb.Append("(DATEPART(dayofyear, ");
+                        this.Write("(DATEPART(dayofyear, ");
                         this.Visit(m.Expression);
-                        sb.Append(") - 1)");
+                        this.Write(") - 1)");
                         return m;
                 }
             }
-            throw new NotSupportedException(string.Format("The member '{0}' is not supported", m.Member.Name));
+            return base.VisitMemberAccess(m);
         }
 
         protected override Expression VisitMethodCall(MethodCallExpression m)
@@ -225,25 +106,25 @@ namespace IQ.Data
                 switch (m.Method.Name)
                 {
                     case "StartsWith":
-                        sb.Append("(");
+                        this.Write("(");
                         this.Visit(m.Object);
-                        sb.Append(" LIKE ");
+                        this.Write(" LIKE ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(" + '%')");
+                        this.Write(" + '%')");
                         return m;
                     case "EndsWith":
-                        sb.Append("(");
+                        this.Write("(");
                         this.Visit(m.Object);
-                        sb.Append(" LIKE '%' + ");
+                        this.Write(" LIKE '%' + ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Contains":
-                        sb.Append("(");
+                        this.Write("(");
                         this.Visit(m.Object);
-                        sb.Append(" LIKE '%' + ");
+                        this.Write(" LIKE '%' + ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(" + '%')");
+                        this.Write(" + '%')");
                         return m;
                     case "Concat":
                         IList<Expression> args = m.Arguments;
@@ -253,84 +134,84 @@ namespace IQ.Data
                         }
                         for (int i = 0, n = args.Count; i < n; i++)
                         {
-                            if (i > 0) sb.Append(" + ");
+                            if (i > 0) this.Write(" + ");
                             this.Visit(args[i]);
                         }
                         return m;
                     case "IsNullOrEmpty":
-                        sb.Append("(");
+                        this.Write("(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(" IS NULL OR ");
+                        this.Write(" IS NULL OR ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(" = '')");
+                        this.Write(" = '')");
                         return m;
                     case "ToUpper":
-                        sb.Append("UPPER(");
+                        this.Write("UPPER(");
                         this.Visit(m.Object);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "ToLower":
-                        sb.Append("LOWER(");
+                        this.Write("LOWER(");
                         this.Visit(m.Object);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Replace":
-                        sb.Append("REPLACE(");
+                        this.Write("REPLACE(");
                         this.Visit(m.Object);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[1]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Substring":
-                        sb.Append("SUBSTRING(");
+                        this.Write("SUBSTRING(");
                         this.Visit(m.Object);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(" + 1, ");
+                        this.Write(" + 1, ");
                         if (m.Arguments.Count == 2)
                         {
                             this.Visit(m.Arguments[1]);
                         }
                         else
                         {
-                            sb.Append("8000");
+                            this.Write("8000");
                         }
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Remove":
-                        sb.Append("STUFF(");
+                        this.Write("STUFF(");
                         this.Visit(m.Object);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(" + 1, ");
+                        this.Write(" + 1, ");
                         if (m.Arguments.Count == 2)
                         {
                             this.Visit(m.Arguments[1]);
                         }
                         else
                         {
-                            sb.Append("8000");
+                            this.Write("8000");
                         }
-                        sb.Append(", '')");
+                        this.Write(", '')");
                         return m;
                     case "IndexOf":
-                        sb.Append("(CHARINDEX(");
+                        this.Write("(CHARINDEX(");
                         this.Visit(m.Object);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[0]);
                         if (m.Arguments.Count == 2 && m.Arguments[1].Type == typeof(int))
                         {
-                            sb.Append(", ");
+                            this.Write(", ");
                             this.Visit(m.Arguments[1]);
                         }
-                        sb.Append(") - 1)");
+                        this.Write(") - 1)");
                         return m;
                     case "Trim":
-                        sb.Append("RTRIM(LTRIM(");
+                        this.Write("RTRIM(LTRIM(");
                         this.Visit(m.Object);
-                        sb.Append("))");
+                        this.Write("))");
                         return m;
                 }
             }
@@ -341,11 +222,11 @@ namespace IQ.Data
                     case "op_Subtract":
                         if (m.Arguments[1].Type == typeof(DateTime))
                         {
-                            sb.Append("DATEDIFF(");
+                            this.Write("DATEDIFF(");
                             this.Visit(m.Arguments[0]);
-                            sb.Append(", ");
+                            this.Write(", ");
                             this.Visit(m.Arguments[1]);
-                            sb.Append(")");
+                            this.Write(")");
                             return m;
                         }
                         break;
@@ -360,48 +241,48 @@ namespace IQ.Data
                     case "Multiply":
                     case "Divide":
                     case "Remainder":
-                        sb.Append("(");
+                        this.Write("(");
                         this.VisitValue(m.Arguments[0]);
-                        sb.Append(" ");
-                        sb.Append(GetOperator(m.Method.Name));
-                        sb.Append(" ");
+                        this.Write(" ");
+                        this.Write(GetOperator(m.Method.Name));
+                        this.Write(" ");
                         this.VisitValue(m.Arguments[1]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Negate":
-                        sb.Append("-");
+                        this.Write("-");
                         this.Visit(m.Arguments[0]);
-                        sb.Append("");
+                        this.Write("");
                         return m;
                     case "Ceiling":
                     case "Floor":
-                        sb.Append(m.Method.Name.ToUpper());
-                        sb.Append("(");
+                        this.Write(m.Method.Name.ToUpper());
+                        this.Write("(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Round":
                         if (m.Arguments.Count == 1)
                         {
-                            sb.Append("ROUND(");
+                            this.Write("ROUND(");
                             this.Visit(m.Arguments[0]);
-                            sb.Append(", 0)");
+                            this.Write(", 0)");
                             return m;
                         }
                         else if (m.Arguments.Count == 2 && m.Arguments[1].Type == typeof(int))
                         {
-                            sb.Append("ROUND(");
+                            this.Write("ROUND(");
                             this.Visit(m.Arguments[0]);
-                            sb.Append(", ");
+                            this.Write(", ");
                             this.Visit(m.Arguments[1]);
-                            sb.Append(")");
+                            this.Write(")");
                             return m;
                         }
                         break;
                     case "Truncate":
-                        sb.Append("ROUND(");
+                        this.Write("ROUND(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(", 0, 1)");
+                        this.Write(", 0, 1)");
                         return m;
                 }
             }
@@ -422,17 +303,17 @@ namespace IQ.Data
                     case "Sign":
                     case "Ceiling":
                     case "Floor":
-                        sb.Append(m.Method.Name.ToUpper());
-                        sb.Append("(");
+                        this.Write(m.Method.Name.ToUpper());
+                        this.Write("(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Atan2":
-                        sb.Append("ATN2(");
+                        this.Write("ATN2(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[1]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Log":
                         if (m.Arguments.Count == 1)
@@ -441,74 +322,52 @@ namespace IQ.Data
                         }
                         break;
                     case "Pow":
-                        sb.Append("POWER(");
+                        this.Write("POWER(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(", ");
+                        this.Write(", ");
                         this.Visit(m.Arguments[1]);
-                        sb.Append(")");
+                        this.Write(")");
                         return m;
                     case "Round":
                         if (m.Arguments.Count == 1)
                         {
-                            sb.Append("ROUND(");
+                            this.Write("ROUND(");
                             this.Visit(m.Arguments[0]);
-                            sb.Append(", 0)");
+                            this.Write(", 0)");
                             return m;
                         }
                         else if (m.Arguments.Count == 2 && m.Arguments[1].Type == typeof(int))
                         {
-                            sb.Append("ROUND(");
+                            this.Write("ROUND(");
                             this.Visit(m.Arguments[0]);
-                            sb.Append(", ");
+                            this.Write(", ");
                             this.Visit(m.Arguments[1]);
-                            sb.Append(")");
+                            this.Write(")");
                             return m;
                         }
                         break;
                     case "Truncate":
-                        sb.Append("ROUND(");
+                        this.Write("ROUND(");
                         this.Visit(m.Arguments[0]);
-                        sb.Append(", 0, 1)");
+                        this.Write(", 0, 1)");
                         return m;
                 }
             }
             if (m.Method.Name == "ToString")
             {
-                if (m.Object.Type == typeof(string))
+                if (m.Object.Type != typeof(string))
                 {
-                    this.Visit(m.Object);  // no op
+                    this.Write("CONVERT(VARCHAR, ");
+                    this.Visit(m.Object);
+                    this.Write(")");
                 }
                 else
                 {
-                    sb.Append("CONVERT(VARCHAR, ");
                     this.Visit(m.Object);
-                    sb.Append(")");
                 }
                 return m;
             }
-            else if (m.Method.Name == "Equals")
-            {
-                if (m.Method.IsStatic && m.Method.DeclaringType == typeof(object))
-                {
-                    sb.Append("(");
-                    this.Visit(m.Arguments[0]);
-                    sb.Append(" = ");
-                    this.Visit(m.Arguments[1]);
-                    sb.Append(")");
-                    return m;
-                }
-                else if (!m.Method.IsStatic && m.Arguments.Count == 1 && m.Arguments[0].Type == m.Object.Type)
-                {
-                    sb.Append("(");
-                    this.Visit(m.Object);
-                    sb.Append(" = ");
-                    this.Visit(m.Arguments[0]);
-                    sb.Append(")");
-                    return m;
-                }
-            }
-
-            throw new NotSupportedException(string.Format("The method '{0}' is not supported", m.Method.Name));
+            return base.VisitMethodCall(m);
         }
 
         protected override NewExpression VisitNew(NewExpression nex)
@@ -517,894 +376,261 @@ namespace IQ.Data
             {
                 if (nex.Arguments.Count == 3)
                 {
-                    sb.Append("DATEADD(year, ");
+                    this.Write("DATEADD(year, ");
                     this.Visit(nex.Arguments[0]);
-                    sb.Append(", DATEADD(month, ");
+                    this.Write(", DATEADD(month, ");
                     this.Visit(nex.Arguments[1]);
-                    sb.Append(", DATEADD(day, ");
+                    this.Write(", DATEADD(day, ");
                     this.Visit(nex.Arguments[2]);
-                    sb.Append(", 0)))");
+                    this.Write(", 0)))");
                     return nex;
                 }
                 else if (nex.Arguments.Count == 6)
                 {
-                    sb.Append("DATEADD(year, ");
+                    this.Write("DATEADD(year, ");
                     this.Visit(nex.Arguments[0]);
-                    sb.Append(", DATEADD(month, ");
+                    this.Write(", DATEADD(month, ");
                     this.Visit(nex.Arguments[1]);
-                    sb.Append(", DATEADD(day, ");
+                    this.Write(", DATEADD(day, ");
                     this.Visit(nex.Arguments[2]);
-                    sb.Append(", DATEADD(hour, ");
+                    this.Write(", DATEADD(hour, ");
                     this.Visit(nex.Arguments[3]);
-                    sb.Append(", DATEADD(minute, ");
+                    this.Write(", DATEADD(minute, ");
                     this.Visit(nex.Arguments[4]);
-                    sb.Append(", DATEADD(second, ");
+                    this.Write(", DATEADD(second, ");
                     this.Visit(nex.Arguments[5]);
-                    sb.Append(", 0))))))");
+                    this.Write(", 0))))))");
                     return nex;
                 }
             }
-            throw new NotSupportedException(string.Format("The construtor '{0}' is not supported", nex.Constructor));
-        }
-
-        protected override Expression VisitUnary(UnaryExpression u)
-        {
-            string op = this.GetOperator(u);
-            switch (u.NodeType)
-            {
-                case ExpressionType.Not:
-                    if (IsBoolean(u.Operand.Type))
-                    {
-                        sb.Append(op);
-                        sb.Append(" ");
-                        this.VisitPredicate(u.Operand);
-                    }
-                    else
-                    {
-                        sb.Append(op);
-                        this.VisitValue(u.Operand);
-                    }
-                    break;
-                case ExpressionType.Negate:
-                case ExpressionType.NegateChecked:
-                    sb.Append(op);
-                    this.VisitValue(u.Operand);
-                    break;
-                case ExpressionType.UnaryPlus:
-                    this.VisitValue(u.Operand);
-                    break;
-                case ExpressionType.Convert:
-                    // ignore conversions for now
-                    this.Visit(u.Operand);
-                    break;
-                default:
-                    throw new NotSupportedException(string.Format("The unary operator '{0}' is not supported", u.NodeType));
-            }
-            return u;
+            return base.VisitNew(nex);
         }
 
         protected override Expression VisitBinary(BinaryExpression b)
         {
-            string op = this.GetOperator(b);
-            Expression left = b.Left;
-            Expression right = b.Right;
-
             if (b.NodeType == ExpressionType.Power)
             {
-                sb.Append("POWER(");
-                this.VisitValue(left);
-                sb.Append(", ");
-                this.VisitValue(right);
-                sb.Append(")");
+                this.Write("POWER(");
+                this.VisitValue(b.Left);
+                this.Write(", ");
+                this.VisitValue(b.Right);
+                this.Write(")");
                 return b;
             }
             else if (b.NodeType == ExpressionType.Coalesce)
             {
-                sb.Append("COALESCE(");
-                this.VisitValue(left);
-                sb.Append(", ");
+                this.Write("COALESCE(");
+                this.VisitValue(b.Left);
+                this.Write(", ");
+                Expression right = b.Right;
                 while (right.NodeType == ExpressionType.Coalesce)
                 {
                     BinaryExpression rb = (BinaryExpression)right;
                     this.VisitValue(rb.Left);
-                    sb.Append(", ");
+                    this.Write(", ");
                     right = rb.Right;
                 }
                 this.VisitValue(right);
-                sb.Append(")");
+                this.Write(")");
                 return b;
             }
-            else
+            else if (b.NodeType == ExpressionType.LeftShift)
             {
-                sb.Append("(");
-                switch (b.NodeType)
-                {
-                    case ExpressionType.And:
-                    case ExpressionType.AndAlso:
-                    case ExpressionType.Or:
-                    case ExpressionType.OrElse:
-                        if (IsBoolean(left.Type))
-                        {
-                            this.VisitPredicate(left);
-                            sb.Append(" ");
-                            sb.Append(op);
-                            sb.Append(" ");
-                            this.VisitPredicate(right);
-                        }
-                        else
-                        {
-                            this.VisitValue(left);
-                            sb.Append(" ");
-                            sb.Append(op);
-                            sb.Append(" ");
-                            this.VisitValue(right);
-                        }
-                        break;
-                    case ExpressionType.Equal:
-                    case ExpressionType.NotEqual:
-                        if (right.NodeType == ExpressionType.Constant)
-                        {
-                            ConstantExpression ce = (ConstantExpression)right;
-                            if (ce.Value == null)
-                            {
-                                this.Visit(left);
-                                sb.Append(" IS NULL");
-                                break;
-                            }
-                        }
-                        else if (left.NodeType == ExpressionType.Constant)
-                        {
-                            ConstantExpression ce = (ConstantExpression)left;
-                            if (ce.Value == null)
-                            {
-                                this.Visit(right);
-                                sb.Append(" IS NULL");
-                                break;
-                            }
-                        }
-                        goto case ExpressionType.LessThan;
-                    case ExpressionType.LessThan:
-                    case ExpressionType.LessThanOrEqual:
-                    case ExpressionType.GreaterThan:
-                    case ExpressionType.GreaterThanOrEqual:
-                        // check for special x.CompareTo(y) && type.Compare(x,y)
-                        if (left.NodeType == ExpressionType.Call && right.NodeType == ExpressionType.Constant)
-                        {
-                            MethodCallExpression mc = (MethodCallExpression)left;
-                            ConstantExpression ce = (ConstantExpression)right;
-                            if (ce.Value != null && ce.Value.GetType() == typeof(int) && ((int)ce.Value) == 0)
-                            {
-                                if (mc.Method.Name == "CompareTo" && !mc.Method.IsStatic && mc.Arguments.Count == 1)
-                                {
-                                    left = mc.Object;
-                                    right = mc.Arguments[0];
-                                }
-                                else if (
-                                    (mc.Method.DeclaringType == typeof(string) || mc.Method.DeclaringType == typeof(decimal))
-                                      && mc.Method.Name == "Compare" && mc.Method.IsStatic && mc.Arguments.Count == 2)
-                                {
-                                    left = mc.Arguments[0];
-                                    right = mc.Arguments[1];
-                                }
-                            }
-                        }
-                        goto case ExpressionType.Add;
-                    case ExpressionType.Add:
-                    case ExpressionType.AddChecked:
-                    case ExpressionType.Subtract:
-                    case ExpressionType.SubtractChecked:
-                    case ExpressionType.Multiply:
-                    case ExpressionType.MultiplyChecked:
-                    case ExpressionType.Divide:
-                    case ExpressionType.Modulo:
-                    case ExpressionType.ExclusiveOr:
-                        this.VisitValue(left);
-                        sb.Append(" ");
-                        sb.Append(op);
-                        sb.Append(" ");
-                        this.VisitValue(right);
-                        break;
-                    case ExpressionType.RightShift:
-                        this.VisitValue(left);
-                        sb.Append(" / POWER(2, ");
-                        this.VisitValue(right);
-                        sb.Append(")");
-                        break;
-                    case ExpressionType.LeftShift:
-                        this.VisitValue(left);
-                        sb.Append(" * POWER(2, ");
-                        this.VisitValue(right);
-                        sb.Append(")");
-                        break;
-                    default:
-                        throw new NotSupportedException(string.Format("The binary operator '{0}' is not supported", b.NodeType));
-                }
-                sb.Append(")");
+                this.Write("(");
+                this.VisitValue(b.Left);
+                this.Write(" * POWER(2, ");
+                this.VisitValue(b.Right);
+                this.Write("))");
+                return b;
             }
-            return b;
+            else if (b.NodeType == ExpressionType.RightShift)
+            {
+                this.Write("(");
+                this.VisitValue(b.Left);
+                this.Write(" / POWER(2, ");
+                this.VisitValue(b.Right);
+                this.Write("))");
+                return b;
+            }
+            return base.VisitBinary(b);
         }
 
-        private string GetOperator(string methodName)
-        {
-            switch (methodName)
-            {
-                case "Add": return "+";
-                case "Subtract": return "-";
-                case "Multiply": return "*";
-                case "Divide": return "/";
-                case "Negate": return "-";
-                case "Remainder": return "%";
-                default: return null;
-            }
-        }
-
-        private string GetOperator(UnaryExpression u)
-        {
-            switch (u.NodeType)
-            {
-                case ExpressionType.Negate:
-                case ExpressionType.NegateChecked:
-                    return "-";
-                case ExpressionType.UnaryPlus:
-                    return "+";
-                case ExpressionType.Not:
-                    return IsBoolean(u.Operand.Type) ? "NOT" : "~";
-                default:
-                    return "";
-            }
-        }
-        private string GetOperator(BinaryExpression b)
-        {
-            switch (b.NodeType)
-            {
-                case ExpressionType.And:
-                case ExpressionType.AndAlso:
-                    return (IsBoolean(b.Left.Type)) ? "AND" : "&";
-                case ExpressionType.Or:
-                case ExpressionType.OrElse:
-                    return (IsBoolean(b.Left.Type) ? "OR" : "|");
-                case ExpressionType.Equal:
-                    return "=";
-                case ExpressionType.NotEqual:
-                    return "<>";
-                case ExpressionType.LessThan:
-                    return "<";
-                case ExpressionType.LessThanOrEqual:
-                    return "<=";
-                case ExpressionType.GreaterThan:
-                    return ">";
-                case ExpressionType.GreaterThanOrEqual:
-                    return ">=";
-                case ExpressionType.Add:
-                case ExpressionType.AddChecked:
-                    return "+";
-                case ExpressionType.Subtract:
-                case ExpressionType.SubtractChecked:
-                    return "-";
-                case ExpressionType.Multiply:
-                case ExpressionType.MultiplyChecked:
-                    return "*";
-                case ExpressionType.Divide:
-                    return "/";
-                case ExpressionType.Modulo:
-                    return "%";
-                case ExpressionType.ExclusiveOr:
-                    return "^";
-                default:
-                    return "";
-            }
-        }
-
-        private bool IsBoolean(Type type)
-        {
-            return type == typeof(bool) || type == typeof(bool?);
-        }
-
-        private bool IsPredicate(Expression expr)
-        {
-            switch (expr.NodeType)
-            {
-                case ExpressionType.And:
-                case ExpressionType.AndAlso:
-                case ExpressionType.Or:
-                case ExpressionType.OrElse:
-                    return IsBoolean(((BinaryExpression)expr).Type);
-                case ExpressionType.Not:
-                    return IsBoolean(((UnaryExpression)expr).Type);
-                case ExpressionType.Equal:
-                case ExpressionType.NotEqual:
-                case ExpressionType.LessThan:
-                case ExpressionType.LessThanOrEqual:
-                case ExpressionType.GreaterThan:
-                case ExpressionType.GreaterThanOrEqual:
-                case (ExpressionType)DbExpressionType.IsNull:
-                case (ExpressionType)DbExpressionType.Between:
-                case (ExpressionType)DbExpressionType.Exists:
-                case (ExpressionType)DbExpressionType.In:
-                    return true;
-                case ExpressionType.Call:
-                    return IsBoolean(((MethodCallExpression)expr).Type);
-                default:
-                    return false;
-            }
-        }
-
-        protected virtual Expression VisitPredicate(Expression expr)
-        {
-            this.Visit(expr);
-            if (!IsPredicate(expr))
-            {
-                sb.Append(" <> 0");
-            }
-            return expr;
-        }
-
-        protected virtual Expression VisitValue(Expression expr)
+        protected override Expression VisitValue(Expression expr)
         {
             if (IsPredicate(expr))
             {
-                sb.Append("CASE WHEN (");
+                this.Write("CASE WHEN (");
                 this.Visit(expr);
-                sb.Append(") THEN 1 ELSE 0 END");
+                this.Write(") THEN 1 ELSE 0 END");
+                return expr;
             }
-            else
-            {
-                this.Visit(expr);
-            }
-            return expr;
+            return base.VisitValue(expr);
         }
 
         protected override Expression VisitConditional(ConditionalExpression c)
         {
             if (this.IsPredicate(c.Test))
             {
-                sb.Append("(CASE WHEN ");
+                this.Write("(CASE WHEN ");
                 this.VisitPredicate(c.Test);
-                sb.Append(" THEN ");
+                this.Write(" THEN ");
                 this.VisitValue(c.IfTrue);
                 Expression ifFalse = c.IfFalse;
                 while (ifFalse != null && ifFalse.NodeType == ExpressionType.Conditional)
                 {
                     ConditionalExpression fc = (ConditionalExpression)ifFalse;
-                    sb.Append(" WHEN ");
+                    this.Write(" WHEN ");
                     this.VisitPredicate(fc.Test);
-                    sb.Append(" THEN ");
+                    this.Write(" THEN ");
                     this.VisitValue(fc.IfTrue);
                     ifFalse = fc.IfFalse;
                 }
                 if (ifFalse != null)
                 {
-                    sb.Append(" ELSE ");
+                    this.Write(" ELSE ");
                     this.VisitValue(ifFalse);
                 }
-                sb.Append(" END)");
+                this.Write(" END)");
             }
             else
             {
-                sb.Append("(CASE ");
+                this.Write("(CASE ");
                 this.VisitValue(c.Test);
-                sb.Append(" WHEN 0 THEN ");
+                this.Write(" WHEN 0 THEN ");
                 this.VisitValue(c.IfFalse);
-                sb.Append(" ELSE ");
+                this.Write(" ELSE ");
                 this.VisitValue(c.IfTrue);
-                sb.Append(" END)");
+                this.Write(" END)");
             }
             return c;
-        }
-
-        protected override Expression VisitConstant(ConstantExpression c)
-        {
-            this.WriteValue(c.Value);
-            return c;
-        }
-
-        protected virtual void WriteValue(object value)
-        {
-            if (value == null)
-            {
-                sb.Append("NULL");
-            }
-            else
-            {
-                switch (Type.GetTypeCode(value.GetType()))
-                {
-                    case TypeCode.Boolean:
-                        sb.Append(((bool)value) ? 1 : 0);
-                        break;
-                    case TypeCode.String:
-                        sb.Append("'");
-                        sb.Append(value);
-                        sb.Append("'");
-                        break;
-                    case TypeCode.Object:
-                        if (value.GetType().IsEnum)
-                        {
-                            sb.Append(Convert.ChangeType(value, typeof(int)));
-                        }
-                        else
-                        {
-                            throw new NotSupportedException(string.Format("The constant for '{0}' is not supported", value));
-                        }
-                        break;
-                    default:
-                        sb.Append(value);
-                        break;
-                }
-            }
-        }
-
-        private string GetAliasName(TableAlias alias)
-        {
-            string name;
-            if (!this.aliases.TryGetValue(alias, out name))
-            {
-                name = "t" + this.aliases.Count;
-                this.aliases.Add(alias, name);
-            }
-            return name;
-        }
-
-        protected override Expression VisitColumn(ColumnExpression column)
-        {
-            if (column.Alias != null && !this.hideColumnAliases)
-            {
-                sb.Append(GetAliasName(column.Alias));
-                sb.Append(".");
-            }
-            sb.Append(column.Name);
-            return column;
-        }
-
-        protected override Expression VisitProjection(ProjectionExpression proj)
-        {
-            // treat these like scalar subqueries
-            if (proj.Projector is ColumnExpression)
-            {
-                sb.Append("(");
-                this.AppendNewLine(Indentation.Inner);
-                this.Visit(proj.Select);
-                sb.Append(")");
-                this.Indent(Indentation.Outer);
-            }
-            else
-            {
-                throw new NotSupportedException("Non-scalar projections cannot be translated to SQL.");
-            }
-            return proj;
-        }
-
-        protected override Expression VisitSelect(SelectExpression select)
-        {
-            sb.Append("SELECT ");
-            if (select.IsDistinct)
-            {
-                sb.Append("DISTINCT ");
-            }
-            if (select.Take != null)
-            {
-                sb.Append("TOP (");
-                this.Visit(select.Take);
-                sb.Append(") ");
-            }
-            if (select.Columns.Count > 0)
-            {
-                for (int i = 0, n = select.Columns.Count; i < n; i++)
-                {
-                    ColumnDeclaration column = select.Columns[i];
-                    if (i > 0)
-                    {
-                        sb.Append(", ");
-                    }
-                    ColumnExpression c = this.VisitValue(column.Expression) as ColumnExpression;
-                    if (!string.IsNullOrEmpty(column.Name) && (c == null || c.Name != column.Name))
-                    {
-                        sb.Append(" AS ");
-                        sb.Append(column.Name);
-                    }
-                }
-            }
-            else
-            {
-                sb.Append("NULL ");
-                if (this.isNested)
-                {
-                    sb.Append("AS tmp ");
-                }
-            }
-            if (select.From != null)
-            {
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("FROM ");
-                this.VisitSource(select.From);
-            }
-            if (select.Where != null)
-            {
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("WHERE ");
-                this.VisitPredicate(select.Where);
-            }
-            if (select.GroupBy != null && select.GroupBy.Count > 0)
-            {
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("GROUP BY ");
-                for (int i = 0, n = select.GroupBy.Count; i < n; i++)
-                {
-                    if (i > 0)
-                    {
-                        sb.Append(", ");
-                    }
-                    this.VisitValue(select.GroupBy[i]);
-                }
-            }
-            if (select.OrderBy != null && select.OrderBy.Count > 0)
-            {
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("ORDER BY ");
-                for (int i = 0, n = select.OrderBy.Count; i < n; i++)
-                {
-                    OrderExpression exp = select.OrderBy[i];
-                    if (i > 0)
-                    {
-                        sb.Append(", ");
-                    }
-                    this.VisitValue(exp.Expression);
-                    if (exp.OrderType != OrderType.Ascending)
-                    {
-                        sb.Append(" DESC");
-                    }
-                }
-            }
-            return select;
-        }
-
-        bool isNested = false;
-
-        protected override Expression VisitSource(Expression source)
-        {
-            bool saveIsNested = this.isNested;
-            this.isNested = true;
-            switch ((DbExpressionType)source.NodeType)
-            {
-                case DbExpressionType.Table:
-                    TableExpression table = (TableExpression)source;
-                    sb.Append(table.Name);
-                    if (!this.hideTableAliases)
-                    {
-                        sb.Append(" AS ");
-                        sb.Append(GetAliasName(table.Alias));
-                    }
-                    break;
-                case DbExpressionType.Select:
-                    SelectExpression select = (SelectExpression)source;
-                    sb.Append("(");
-                    this.AppendNewLine(Indentation.Inner);
-                    this.Visit(select);
-                    this.AppendNewLine(Indentation.Same);
-                    sb.Append(")");
-                    sb.Append(" AS ");
-                    sb.Append(GetAliasName(select.Alias));
-                    this.Indent(Indentation.Outer);
-                    break;
-                case DbExpressionType.Join:
-                    this.VisitJoin((JoinExpression)source);
-                    break;
-                default:
-                    throw new InvalidOperationException("Select source is not valid type");
-            }
-            this.isNested = saveIsNested;
-            return source;
-        }
-
-        protected override Expression VisitJoin(JoinExpression join)
-        {
-            this.VisitSource(join.Left);
-            this.AppendNewLine(Indentation.Same);
-            switch (join.Join)
-            {
-                case JoinType.CrossJoin:
-                    sb.Append("CROSS JOIN ");
-                    break;
-                case JoinType.InnerJoin:
-                    sb.Append("INNER JOIN ");
-                    break;
-                case JoinType.CrossApply:
-                    sb.Append("CROSS APPLY ");
-                    break;
-                case JoinType.OuterApply:
-                    sb.Append("OUTER APPLY ");
-                    break;
-                case JoinType.LeftOuter:
-                    sb.Append("LEFT OUTER JOIN ");
-                    break;
-            }
-            this.VisitSource(join.Right);
-            if (join.Condition != null)
-            {
-                this.AppendNewLine(Indentation.Inner);
-                sb.Append("ON ");
-                this.VisitPredicate(join.Condition);
-                this.Indent(Indentation.Outer);
-            }
-            return join;
-        }
-
-        private string GetAggregateName(AggregateType aggregateType)
-        {
-            switch (aggregateType)
-            {
-                case AggregateType.Count: return "COUNT";
-                case AggregateType.Min: return "MIN";
-                case AggregateType.Max: return "MAX";
-                case AggregateType.Sum: return "SUM";
-                case AggregateType.Average: return "AVG";
-                default: throw new Exception(string.Format("Unknown aggregate type: {0}", aggregateType));
-            }
-        }
-
-        private bool RequiresAsteriskWhenNoArgument(AggregateType aggregateType)
-        {
-            return aggregateType == AggregateType.Count;
-        }
-
-        protected override Expression VisitAggregate(AggregateExpression aggregate)
-        {
-            sb.Append(GetAggregateName(aggregate.AggregateType));
-            sb.Append("(");
-            if (aggregate.IsDistinct)
-            {
-                sb.Append("DISTINCT ");
-            }
-            if (aggregate.Argument != null)
-            {
-                this.VisitValue(aggregate.Argument);
-            }
-            else if (RequiresAsteriskWhenNoArgument(aggregate.AggregateType))
-            {
-                sb.Append("*");
-            }
-            sb.Append(")");
-            return aggregate;
-        }
-
-        protected override Expression VisitIsNull(IsNullExpression isnull)
-        {
-            this.VisitValue(isnull.Expression);
-            sb.Append(" IS NULL");
-            return isnull;
-        }
-
-        protected override Expression VisitBetween(BetweenExpression between)
-        {
-            this.VisitValue(between.Expression);
-            sb.Append(" BETWEEN ");
-            this.VisitValue(between.Lower);
-            sb.Append(" AND ");
-            this.VisitValue(between.Upper);
-            return between;
         }
 
         protected override Expression VisitRowNumber(RowNumberExpression rowNumber)
         {
-            sb.Append("ROW_NUMBER() OVER(");
+            this.Write("ROW_NUMBER() OVER(");
             if (rowNumber.OrderBy != null && rowNumber.OrderBy.Count > 0)
             {
-                sb.Append("ORDER BY ");
+                this.Write("ORDER BY ");
                 for (int i = 0, n = rowNumber.OrderBy.Count; i < n; i++)
                 {
                     OrderExpression exp = rowNumber.OrderBy[i];
                     if (i > 0)
                     {
-                        sb.Append(", ");
+                        this.Write(", ");
                     }
                     this.VisitValue(exp.Expression);
                     if (exp.OrderType != OrderType.Ascending)
                     {
-                        sb.Append(" DESC");
+                        this.Write(" DESC");
                     }
                 }
             }
-            sb.Append(")");
+            this.Write(")");
             return rowNumber;
         }
 
-        protected override Expression VisitScalar(ScalarExpression subquery)
+        protected override Expression VisitIf(IFCommand ifx)
         {
-            sb.Append("(");
-            this.AppendNewLine(Indentation.Inner);
-            this.Visit(subquery.Select);
-            this.AppendNewLine(Indentation.Same);
-            sb.Append(")");
-            this.Indent(Indentation.Outer);
-            return subquery;
-        }
-
-        protected override Expression VisitExists(ExistsExpression exists)
-        {
-            sb.Append("EXISTS(");
-            this.AppendNewLine(Indentation.Inner);
-            this.Visit(exists.Select);
-            this.AppendNewLine(Indentation.Same);
-            sb.Append(")");
-            this.Indent(Indentation.Outer);
-            return exists;
-        }
-
-        protected override Expression VisitIn(InExpression @in)
-        {
-            this.VisitValue(@in.Expression);
-            sb.Append(" IN (");
-            if (@in.Select != null)
+            if (!this.Language.AllowsMultipleCommands)
             {
-                this.AppendNewLine(Indentation.Inner);
-                this.Visit(@in.Select);
-                this.AppendNewLine(Indentation.Same);
-                sb.Append(")");
-                this.Indent(Indentation.Outer);
+                return base.VisitIf(ifx);
             }
-            else if (@in.Values != null)
+            this.Write("IF ");
+            this.Visit(ifx.Check);
+            this.WriteLine(Indentation.Same);
+            this.Write("BEGIN");
+            this.WriteLine(Indentation.Inner);
+            this.VisitStatement(ifx.IfTrue);
+            this.WriteLine(Indentation.Outer);
+            if (ifx.IfFalse != null)
             {
-                for (int i = 0, n = @in.Values.Count; i < n; i++)
+                this.Write("END ELSE BEGIN");
+                this.WriteLine(Indentation.Inner);
+                this.VisitStatement(ifx.IfFalse);
+                this.WriteLine(Indentation.Outer);
+            }
+            this.Write("END");
+            return ifx;
+        }
+
+        protected override Expression VisitBlock(BlockCommand block)
+        {
+            if (!this.Language.AllowsMultipleCommands)
+            {
+                return base.VisitBlock(block);
+            }
+
+            for (int i = 0, n = block.Commands.Count; i < n; i++)
+            {
+                if (i > 0)
                 {
-                    if (i > 0) sb.Append(", ");
-                    this.VisitValue(@in.Values[i]);
+                    this.WriteLine(Indentation.Same);
+                    this.WriteLine(Indentation.Same);
                 }
-                sb.Append(")");
+                this.VisitStatement(block.Commands[i]);
             }
-            return @in;
+            return block;
         }
 
-        protected override Expression VisitNamedValue(NamedValueExpression value)
+        protected override Expression VisitDeclaration(DeclarationCommand decl)
         {
-            sb.Append("@" + value.Name);
-            return value;
-        }
-
-        protected override Expression VisitInsert(InsertExpression insert)
-        {
-            sb.Append("INSERT INTO ");
-            sb.Append(insert.Table.Name);
-            sb.Append("(");
-            for (int i = 0, n = insert.Assignments.Count; i < n; i++)
+            if (!this.Language.AllowsMultipleCommands)
             {
-                ColumnAssignment ca = insert.Assignments[i];
-                if (i > 0) sb.Append(", ");
-                sb.Append(ca.Column.Name);
-            }
-            sb.Append(")");
-            this.AppendNewLine(Indentation.Same);
-            sb.Append("VALUES (");
-            for (int i = 0, n = insert.Assignments.Count; i < n; i++)
-            {
-                ColumnAssignment ca = insert.Assignments[i];
-                if (i > 0) sb.Append(", ");
-                this.Visit(ca.Expression);
-            }
-            sb.Append(")");
-
-            if (insert.Result != null)
-            {
-                this.AppendNewLine(Indentation.Same);
-                this.AppendNewLine(Indentation.Same);
-                ProjectionExpression proj = (ProjectionExpression)insert.Result;
-                this.Visit(proj.Select);
+                return base.VisitDeclaration(decl);
             }
 
-            return insert;
-        }
-
-        protected override Expression VisitUpdate(UpdateExpression update)
-        {
-            sb.Append("UPDATE ");
-            sb.Append(this.GetAliasName(update.Table.Alias));
-            this.AppendNewLine(Indentation.Same);
-            bool saveHide = this.hideColumnAliases;
-            this.hideColumnAliases = true;
-            sb.Append("SET ");
-            for (int i = 0, n = update.Assignments.Count; i < n; i++)
+            for (int i = 0, n = decl.Variables.Count; i < n; i++)
             {
-                ColumnAssignment ca = update.Assignments[i];
-                if (i > 0) sb.Append(", ");
-                this.Visit(ca.Column);
-                sb.Append(" = ");
-                this.Visit(ca.Expression);
+                var v = decl.Variables[i];
+                if (i > 0)
+                    this.WriteLine(Indentation.Same);
+                this.Write("DECLARE @");
+                this.Write(v.Name);
+                this.Write(" ");
+                this.Write(this.Language.TypeSystem.GetVariableDeclaration(v.QueryType, false));
             }
-            this.hideColumnAliases = saveHide;
-            this.AppendNewLine(Indentation.Same);
-            sb.Append("FROM ");
-            this.VisitSource(update.Table);
-            if (update.Where != null)
+            if (decl.Source != null)
             {
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("WHERE ");
-                this.Visit(update.Where);
-            }
-
-            if (update.Result != null)
-            {
-                this.AppendNewLine(Indentation.Same);
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("IF @@ROWCOUNT > 0 BEGIN");
-                this.AppendNewLine(Indentation.Inner);
-                ProjectionExpression proj = (ProjectionExpression)update.Result;
-                this.Visit(proj.Select);
-                this.AppendNewLine(Indentation.Outer);
-                sb.Append("END");
-            }
-
-            return update;
-        }
-
-        protected override Expression VisitUpsert(UpsertExpression upsert)
-        {
-            if (upsert.Check != null)
-            {
-                sb.Append("IF ");
-                this.Visit(upsert.Check);
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("BEGIN");
-                this.AppendNewLine(Indentation.Inner);
-                this.Visit(upsert.Update);
-                this.AppendNewLine(Indentation.Outer);
-                sb.Append("END ELSE BEGIN");
-                this.AppendNewLine(Indentation.Inner);
-                this.Visit(upsert.Insert);
-                this.AppendNewLine(Indentation.Outer);
-                sb.Append("END");
+                this.WriteLine(Indentation.Same);
+                this.Write("SELECT ");
+                for (int i = 0, n = decl.Variables.Count; i < n; i++)
+                {
+                    if (i > 0)
+                        this.Write(", ");
+                    this.Write("@");
+                    this.Write(decl.Variables[i].Name);
+                    this.Write(" = ");
+                    this.Visit(decl.Source.Columns[i].Expression);
+                }
+                if (decl.Source.From != null)
+                {
+                    this.WriteLine(Indentation.Same);
+                    this.Write("FROM ");
+                    this.VisitSource(decl.Source.From);
+                }
+                if (decl.Source.Where != null)
+                {
+                    this.WriteLine(Indentation.Same);
+                    this.Write("WHERE ");
+                    this.Visit(decl.Source.Where);
+                }
             }
             else
             {
-                this.Visit(upsert.Update);
-                if (upsert.Update.Result != null)
+                for (int i = 0, n = decl.Variables.Count; i < n; i++)
                 {
-                    sb.Append(" ELSE BEGIN");
+                    var v = decl.Variables[i];
+                    if (v.Expression != null)
+                    {
+                        this.WriteLine(Indentation.Same);
+                        this.Write("SET @");
+                        this.Write(v.Name);
+                        this.Write(" = ");
+                        this.Visit(v.Expression);
+                    }
                 }
-                else
-                {
-                    this.AppendNewLine(Indentation.Same);
-                    this.AppendNewLine(Indentation.Same);
-                    sb.Append("IF @@ROWCOUNT = 0 BEGIN");
-                }
-                this.AppendNewLine(Indentation.Inner);
-                this.Visit(upsert.Insert);
-                this.AppendNewLine(Indentation.Outer);
-                sb.Append("END");
             }
-            return upsert;
-        }
-
-        protected override Expression VisitDelete(DeleteExpression delete)
-        {
-            sb.Append("DELETE FROM ");
-            bool saveHideTable = this.hideTableAliases;
-            bool saveHideColumn = this.hideColumnAliases;
-            this.hideTableAliases = true;
-            this.hideColumnAliases = true;
-            this.VisitSource(delete.Table);
-            if (delete.Where != null)
-            {
-                this.AppendNewLine(Indentation.Same);
-                sb.Append("WHERE ");
-                this.Visit(delete.Where);
-            }
-            this.hideTableAliases = saveHideTable;
-            this.hideColumnAliases = saveHideColumn;
-            return delete;
-        }
-
-        protected override Expression VisitFunction(FunctionExpression func)
-        {
-            sb.Append(func.Name);
-            if (func.Arguments.Count > 0)
-            {
-                sb.Append("(");
-                for (int i = 0, n = func.Arguments.Count; i < n; i++)
-                {
-                    if (i > 0) sb.Append(", ");
-                    this.Visit(func.Arguments[i]);
-                }
-                sb.Append(")");
-            }
-            return func;
+            return decl;
         }
     }
 }

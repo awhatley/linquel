@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Extended node types for custom expressions
@@ -37,10 +37,13 @@ namespace IQ.Data
         OuterJoined,
         Insert,
         Update,
-        Upsert,
         Delete,
         Batch,
-        Function
+        Function,
+        Block,
+        If,
+        Declaration,
+        Variable
     }
 
     public static class DbExpressionTypeExtensions
@@ -343,7 +346,7 @@ namespace IQ.Data
         }
         public string QueryText
         {
-            get { return TSqlFormatter.Format(this); }
+            get { return SqlFormatter.Format(this); }
         }
     }
 
@@ -356,7 +359,8 @@ namespace IQ.Data
         InnerJoin,
         CrossApply,
         OuterApply,
-        LeftOuter
+        LeftOuter,
+        SingletonLeftOuter
     }
 
     /// <summary>
@@ -655,7 +659,7 @@ namespace IQ.Data
         }
         public string QueryText
         {
-            get { return TSqlFormatter.Format(select); }
+            get { return SqlFormatter.Format(select); }
         }
     }
 
@@ -689,172 +693,7 @@ namespace IQ.Data
         }
     }
 
-    public abstract class CommandExpression : DbExpression
-    {
-        protected CommandExpression(DbExpressionType eType, Type type)
-            : base(eType, type)
-        {
-        }
-    }
-
-    public abstract class CommandWithResultExpression : CommandExpression
-    {
-        protected CommandWithResultExpression(DbExpressionType eType, Type type)
-            : base(eType, type) 
-        {
-        }
-
-        public abstract Expression Result { get; }
-    }
-
-    public class InsertExpression : CommandWithResultExpression
-    {
-        TableExpression table;
-        ReadOnlyCollection<ColumnAssignment> assignments;
-        Expression result;
-
-        public InsertExpression(TableExpression table, IEnumerable<ColumnAssignment> assignments, Expression result)
-            : base(DbExpressionType.Insert, result != null ? result.Type : typeof(int))
-        {
-            this.table = table;
-            this.assignments = assignments.ToReadOnly();
-            this.result = result;
-        }
-
-        public TableExpression Table
-        {
-            get { return this.table; }
-        }
-
-        public ReadOnlyCollection<ColumnAssignment> Assignments
-        {
-            get { return this.assignments; }
-        }
-
-        public override Expression Result
-        {
-            get { return this.result; }
-        }
-    }
-
-    public class ColumnAssignment
-    {
-        ColumnExpression column;
-        Expression expression;
-
-        public ColumnAssignment(ColumnExpression column, Expression expression)
-        {
-            this.column = column;
-            this.expression = expression;
-        }
-
-        public ColumnExpression Column
-        {
-            get { return this.column; }
-        }
-
-        public Expression Expression
-        {
-            get { return this.expression; }
-        }
-    }
-
-    public class UpdateExpression : CommandWithResultExpression
-    {
-        TableExpression table;
-        Expression where;
-        ReadOnlyCollection<ColumnAssignment> assignments;
-        Expression result;
-
-        public UpdateExpression(TableExpression table, Expression where, IEnumerable<ColumnAssignment> assignments, Expression result)
-            : base(DbExpressionType.Update, result != null ? result.Type : typeof(int))
-        {
-            this.table = table;
-            this.where = where;
-            this.assignments = assignments.ToReadOnly();
-            this.result = result;
-        }
-
-        public TableExpression Table
-        {
-            get { return this.table; }
-        }
-
-        public Expression Where
-        {
-            get { return this.where; }
-        }
-
-        public ReadOnlyCollection<ColumnAssignment> Assignments
-        {
-            get { return this.assignments; }
-        }
-
-        public override Expression Result
-        {
-            get { return this.result; }
-        }
-    }
-
-    public class UpsertExpression : CommandWithResultExpression
-    {
-        Expression check;
-        InsertExpression insert;
-        UpdateExpression update;
-
-        public UpsertExpression(Expression check, InsertExpression insert, UpdateExpression update)
-            : base(DbExpressionType.Upsert, insert.Result != null ? insert.Result.Type : typeof(int))
-        {
-            this.check = check;
-            this.insert = insert;
-            this.update = update;
-        }
-
-        public Expression Check
-        {
-            get { return this.check; }
-        }
-
-        public InsertExpression Insert
-        {
-            get { return this.insert; }
-        }
-
-        public UpdateExpression Update
-        {
-            get { return this.update; }
-        }
-
-        public override Expression Result
-        {
-            get { return this.insert.Result != null ? this.insert.Result : this.update.Result; }
-        }
-    }
-
-    public class DeleteExpression : CommandExpression
-    {
-        TableExpression table;
-        Expression where;
-
-        public DeleteExpression(TableExpression table, Expression where)
-            : base(DbExpressionType.Delete, typeof(int))
-        {
-            this.table = table;
-            this.where = where;
-        }
-
-        public TableExpression Table
-        {
-            get { return this.table; }
-        }
-
-        public Expression Where
-        {
-            get { return this.where; }
-        }
-    }
-
-    public class BatchExpression : CommandExpression
+    public class BatchExpression : Expression
     {
         Expression input;
         LambdaExpression operation;
@@ -862,7 +701,7 @@ namespace IQ.Data
         Expression stream;
 
         public BatchExpression(Expression input, LambdaExpression operation, Expression batchSize, Expression stream)
-            : base(DbExpressionType.Batch, typeof(IEnumerable<>).MakeGenericType(operation.Body.Type))
+            : base((ExpressionType)DbExpressionType.Batch, typeof(IEnumerable<>).MakeGenericType(operation.Body.Type))
         {
             this.input = input;
             this.operation = operation;
@@ -911,6 +750,239 @@ namespace IQ.Data
         public ReadOnlyCollection<Expression> Arguments
         {
             get { return this.arguments; }
+        }
+    }
+
+    public abstract class CommandExpression : DbExpression
+    {
+        protected CommandExpression(DbExpressionType eType, Type type)
+            : base(eType, type)
+        {
+        }
+    }
+
+    public class InsertCommand : CommandExpression
+    {
+        TableExpression table;
+        ReadOnlyCollection<ColumnAssignment> assignments;
+
+        public InsertCommand(TableExpression table, IEnumerable<ColumnAssignment> assignments)
+            : base(DbExpressionType.Insert, typeof(int))
+        {
+            this.table = table;
+            this.assignments = assignments.ToReadOnly();
+        }
+
+        public TableExpression Table
+        {
+            get { return this.table; }
+        }
+
+        public ReadOnlyCollection<ColumnAssignment> Assignments
+        {
+            get { return this.assignments; }
+        }
+    }
+
+    public class ColumnAssignment
+    {
+        ColumnExpression column;
+        Expression expression;
+
+        public ColumnAssignment(ColumnExpression column, Expression expression)
+        {
+            this.column = column;
+            this.expression = expression;
+        }
+
+        public ColumnExpression Column
+        {
+            get { return this.column; }
+        }
+
+        public Expression Expression
+        {
+            get { return this.expression; }
+        }
+    }
+
+    public class UpdateCommand : CommandExpression
+    {
+        TableExpression table;
+        Expression where;
+        ReadOnlyCollection<ColumnAssignment> assignments;
+
+        public UpdateCommand(TableExpression table, Expression where, IEnumerable<ColumnAssignment> assignments)
+            : base(DbExpressionType.Update, typeof(int))
+        {
+            this.table = table;
+            this.where = where;
+            this.assignments = assignments.ToReadOnly();
+        }
+
+        public TableExpression Table
+        {
+            get { return this.table; }
+        }
+
+        public Expression Where
+        {
+            get { return this.where; }
+        }
+
+        public ReadOnlyCollection<ColumnAssignment> Assignments
+        {
+            get { return this.assignments; }
+        }
+    }
+
+    public class DeleteCommand : CommandExpression
+    {
+        TableExpression table;
+        Expression where;
+
+        public DeleteCommand(TableExpression table, Expression where)
+            : base(DbExpressionType.Delete, typeof(int))
+        {
+            this.table = table;
+            this.where = where;
+        }
+
+        public TableExpression Table
+        {
+            get { return this.table; }
+        }
+
+        public Expression Where
+        {
+            get { return this.where; }
+        }
+    }
+
+
+    public class IFCommand : CommandExpression
+    {
+        Expression check;
+        Expression ifTrue;
+        Expression ifFalse;
+
+        public IFCommand(Expression check, Expression ifTrue, Expression ifFalse)
+            : base(DbExpressionType.If, ifTrue.Type)
+        {
+            this.check = check;
+            this.ifTrue = ifTrue;
+            this.ifFalse = ifFalse;
+        }
+
+        public Expression Check 
+        {
+            get { return this.check; }
+        }
+
+        public Expression IfTrue
+        {
+            get { return this.ifTrue; }
+        }
+
+        public Expression IfFalse 
+        {
+            get { return this.ifFalse; }
+        }
+    }
+
+    public class BlockCommand : CommandExpression
+    {
+        ReadOnlyCollection<Expression> commands;
+
+        public BlockCommand(IList<Expression> commands)
+            : base(DbExpressionType.Block, commands[commands.Count-1].Type)
+        {
+            this.commands = commands.ToReadOnly();
+        }
+
+        public BlockCommand(params Expression[] commands) 
+            : this((IList<Expression>)commands)
+        {
+        }
+
+        public ReadOnlyCollection<Expression> Commands
+        {
+            get { return this.commands; }
+        }
+    }
+
+    public class DeclarationCommand : CommandExpression
+    {
+        ReadOnlyCollection<VariableDeclaration> variables;
+        SelectExpression source;
+
+        public DeclarationCommand(IEnumerable<VariableDeclaration> variables, SelectExpression source)
+            : base(DbExpressionType.Declaration, typeof(void))
+        {
+            this.variables = variables.ToReadOnly();
+            this.source = source;
+        }
+
+        public ReadOnlyCollection<VariableDeclaration> Variables
+        {
+            get { return this.variables; }
+        }
+
+        public SelectExpression Source
+        {
+            get { return this.source; }
+        }
+    }
+
+    public class VariableDeclaration
+    {
+        string name;
+        QueryType type;
+        Expression expression;
+
+        public VariableDeclaration(string name, QueryType type, Expression expression)
+        {
+            this.name = name;
+            this.type = type;
+            this.expression = expression;
+        }
+
+        public string Name
+        {
+            get { return this.name; }
+        }
+
+        public QueryType QueryType
+        {
+            get { return this.type; }
+        }
+
+        public Expression Expression
+        {
+            get { return this.expression; }
+        }
+    }
+
+    public class VariableExpression : Expression
+    {
+        string name;
+        QueryType queryType;
+
+        public VariableExpression(string name, Type type, QueryType queryType)
+            : base((ExpressionType)DbExpressionType.Variable, type)
+        {
+            this.name = name;
+            this.queryType = queryType;
+        }
+
+        public string Name
+        {
+            get { return this.name; }
+        }
+
+        public QueryType QueryType
+        {
+            get { return this.queryType; }
         }
     }
 }

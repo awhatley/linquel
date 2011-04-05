@@ -11,29 +11,41 @@ using System.Reflection;
 using System.Text;
 using System.IO;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Writes out an expression tree (including DbExpression nodes) in a C#-ish syntax
     /// </summary>
     public class DbExpressionWriter : ExpressionWriter
     {
+        QueryLanguage language;
         Dictionary<TableAlias, int> aliasMap = new Dictionary<TableAlias, int>();
 
-        protected DbExpressionWriter(TextWriter writer)
+        protected DbExpressionWriter(TextWriter writer, QueryLanguage language)
             : base(writer)
         {
+            this.language = language;
         }
 
         public new static void Write(TextWriter writer, Expression expression)
         {
-            new DbExpressionWriter(writer).Visit(expression);
+            Write(writer, null, expression);
+        }
+
+        public static void Write(TextWriter writer, QueryLanguage language, Expression expression)
+        {
+            new DbExpressionWriter(writer, language).Visit(expression);
         }
 
         public new static string WriteToString(Expression expression)
         {
+            return WriteToString(null, expression);
+        }
+
+        public static string WriteToString(QueryLanguage language, Expression expression)
+        {
             StringWriter sw = new StringWriter();
-            Write(sw, expression);
+            Write(sw, language, expression);
             return sw.ToString();
         }
 
@@ -55,13 +67,12 @@ namespace IQ.Data
                 case DbExpressionType.Column:
                     return this.VisitColumn((ColumnExpression)exp);
                 case DbExpressionType.Insert:
-                    return this.VisitInsert((InsertExpression)exp);
                 case DbExpressionType.Update:
-                    return this.VisitUpdate((UpdateExpression)exp);
-                case DbExpressionType.Upsert:
-                    return this.VisitUpsert((UpsertExpression)exp);
                 case DbExpressionType.Delete:
-                    return this.VisitDelete((DeleteExpression)exp);
+                case DbExpressionType.If:
+                case DbExpressionType.Block:
+                case DbExpressionType.Declaration:
+                    return this.VisitCommand((CommandExpression)exp);
                 case DbExpressionType.Batch:
                     return this.VisitBatch((BatchExpression)exp);
                 case DbExpressionType.Function:
@@ -71,7 +82,7 @@ namespace IQ.Data
                 default:
                     if (exp is DbExpression)
                     {
-                        this.Write(TSqlFormatter.Format(exp));
+                        this.Write(this.FormatQuery(exp));
                         return exp;
                     }
                     else
@@ -145,28 +156,19 @@ namespace IQ.Data
             return select;
         }
 
-        protected virtual Expression VisitInsert(InsertExpression insert)
+        protected virtual Expression VisitCommand(CommandExpression command)
         {
-            this.Write(TSqlFormatter.Format(insert));
-            return insert;
+            this.Write(this.FormatQuery(command));
+            return command;
         }
 
-        protected virtual Expression VisitDelete(DeleteExpression delete)
+        protected virtual string FormatQuery(Expression query)
         {
-            this.Write(TSqlFormatter.Format(delete));
-            return delete;
-        }
-
-        protected virtual Expression VisitUpdate(UpdateExpression update)
-        {
-            this.Write(TSqlFormatter.Format(update));
-            return update;
-        }
-
-        protected virtual Expression VisitUpsert(UpsertExpression upsert)
-        {
-            this.Write(TSqlFormatter.Format(upsert));
-            return upsert;
+            if (this.language != null)
+            {
+                return this.language.Format(query);
+            }
+            return SqlFormatter.Format(query);
         }
 
         protected virtual Expression VisitBatch(BatchExpression batch)
@@ -185,6 +187,12 @@ namespace IQ.Data
             this.WriteLine(Indentation.Outer);
             this.Write(")");
             return batch;
+        }
+
+        protected virtual Expression VisitVariable(VariableExpression vex)
+        {
+            this.Write(this.FormatQuery(vex));
+            return vex;
         }
 
         protected virtual Expression VisitFunction(FunctionExpression function)

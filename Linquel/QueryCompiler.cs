@@ -9,7 +9,7 @@ using System.Linq.Expressions;
 using System.Text;
 using System.Reflection;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Creates a reusable, parameterized representation of a query that caches the execution plan

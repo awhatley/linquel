@@ -8,7 +8,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 
-namespace IQ
+namespace IQToolkit
 {
     public static class ReadOnlyExtensions
     {

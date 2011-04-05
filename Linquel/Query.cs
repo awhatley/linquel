@@ -9,7 +9,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Optional interface for IQueryProvider to implement Query<T>'s QueryText property.

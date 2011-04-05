@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using IQ;
-using IQ.Data;
+using IQToolkit;
+using IQToolkit.Data;
 
 namespace Test
 {
@@ -14,7 +14,6 @@ namespace Test
         HashSet<string> included;
 
         internal TestPolicy(params string[] includedRelationships)
-            : base(Northwind.StandardPolicy.Mapping)
         {
             this.included = new HashSet<string>(includedRelationships);
         }
@@ -32,7 +31,7 @@ namespace Test
         {
         }
 
-        public override bool IsGenerated(MappingEntity entity, MemberInfo member)
+        protected override bool IsGenerated(MappingEntity entity, MemberInfo member)
         {
             return member.Name == "OrderID" && member.DeclaringType.Name == "Order";
         }

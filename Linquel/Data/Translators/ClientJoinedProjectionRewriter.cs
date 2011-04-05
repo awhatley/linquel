@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// rewrites nested projections into client-side joins
@@ -53,6 +53,7 @@ namespace IQ.Data
 
                         TableAlias newAlias = new TableAlias();
                         var pc = ColumnProjector.ProjectColumns(this.language.CanBeColumn, newProjector, newOuterSelect.Columns, newAlias, newOuterSelect.Alias, newInnerSelect.Alias);
+
                         JoinExpression join = new JoinExpression(JoinType.OuterApply, newOuterSelect, newInnerSelect, null);
                         SelectExpression joinedSelect = new SelectExpression(newAlias, pc.Columns, join, null, null, null, proj.IsSingleton, null, null);
 
@@ -97,38 +98,55 @@ namespace IQ.Data
 
         private bool GetEquiJoinKeyExpressions(Expression predicate, TableAlias outerAlias, List<Expression> outerExpressions, List<Expression> innerExpressions)
         {
-            // predicate can be AND's and EQUAL's between columns
-            BinaryExpression b = predicate as BinaryExpression;
-            if (b != null)
+            if (predicate.NodeType == ExpressionType.Equal)
             {
-                switch (predicate.NodeType)
+                var b = (BinaryExpression)predicate;
+                ColumnExpression leftCol = this.GetColumnExpression(b.Left);
+                ColumnExpression rightCol = this.GetColumnExpression(b.Right);
+                if (leftCol != null && rightCol != null)
                 {
-                    case ExpressionType.And:
-                    case ExpressionType.AndAlso:
-                        return this.GetEquiJoinKeyExpressions(b.Left, outerAlias, outerExpressions, innerExpressions)
-                            && this.GetEquiJoinKeyExpressions(b.Right, outerAlias, outerExpressions, innerExpressions);
-                    case ExpressionType.Equal:
-                        ColumnExpression left = b.Left as ColumnExpression;
-                        ColumnExpression right = b.Right as ColumnExpression;
-                        if (left != null && right != null)
-                        {
-                            if (left.Alias == outerAlias)
-                            {
-                                outerExpressions.Add(left);
-                                innerExpressions.Add(right);
-                                return true;
-                            }
-                            else if (right.Alias == outerAlias)
-                            {
-                                innerExpressions.Add(left);
-                                outerExpressions.Add(right);
-                                return true;
-                            }
-                        }
-                        break;
+                    if (leftCol.Alias == outerAlias)
+                    {
+                        outerExpressions.Add(b.Left);
+                        innerExpressions.Add(b.Right);
+                        return true;
+                    }
+                    else if (rightCol.Alias == outerAlias)
+                    {
+                        innerExpressions.Add(b.Left);
+                        outerExpressions.Add(b.Right);
+                        return true;
+                    }
                 }
             }
-            return false;
+
+            bool hadKey = false;
+            var parts = predicate.Split(ExpressionType.And, ExpressionType.AndAlso);
+            if (parts.Length > 1)
+            {
+                foreach (var part in parts)
+                {
+                    bool hasOuterAliasReference = ReferencedAliasGatherer.Gather(part).Contains(outerAlias);
+                    if (hasOuterAliasReference)
+                    {
+                        if (!GetEquiJoinKeyExpressions(part, outerAlias, outerExpressions, innerExpressions))
+                            return false;
+                        hadKey = true;
+                    }
+                }
+            }
+
+            return hadKey;
+        }
+
+        private ColumnExpression GetColumnExpression(Expression expression)
+        {
+            // ignore converions 
+            while (expression.NodeType == ExpressionType.Convert || expression.NodeType == ExpressionType.ConvertChecked)
+            {
+                expression = ((UnaryExpression)expression).Operand;
+            }
+            return expression as ColumnExpression;
         }
 
         protected override Expression VisitSubquery(SubqueryExpression subquery)

@@ -11,7 +11,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
 
     /// <summary>
@@ -25,6 +25,26 @@ namespace IQ.Data
         public virtual string Quote(string name)
         {
             return name;
+        }
+
+        public virtual bool AllowsMultipleCommands
+        {
+            get { return false; }
+        }
+
+        public virtual bool AllowSubqueryInSelectWithoutFrom
+        {
+            get { return false; }
+        }
+
+        public virtual bool AllowDistinctInAggregates
+        {
+            get { return false; }
+        }
+
+        public virtual Expression GetRowsAffectedExpression(Expression command)
+        {
+            return new FunctionExpression(typeof(int), "@@ROWCOUNT", null);
         }
 
         /// <summary>
@@ -42,9 +62,8 @@ namespace IQ.Data
                     return false;
                 case TypeCode.Object:
                     return
-                        type == typeof(DateTime) ||
                         type == typeof(DateTimeOffset) ||
-                        type == typeof(decimal) ||
+                        type == typeof(TimeSpan) ||
                         type == typeof(Guid) ||
                         type == typeof(byte[]);
                 default:
@@ -86,7 +105,15 @@ namespace IQ.Data
             expression = RedundantSubqueryRemover.Remove(expression);
 
             // convert cross-apply and outer-apply joins into inner & left-outer-joins if possible
-            expression = CrossApplyRewriter.Reduce(expression);
+            expression = CrossApplyRewriter.Rewrite(expression);
+            // convert cross joins into inner joins
+            expression = CrossJoinRewriter.Rewrite(expression);
+
+            // do final reduction
+            expression = UnusedColumnRemover.Remove(expression);
+            expression = RedundantSubqueryRemover.Remove(expression);
+            expression = RedundantJoinRemover.Remove(expression);
+            expression = RedundantColumnRemover.Remove(expression);
 
             return expression;
         }
@@ -98,8 +125,8 @@ namespace IQ.Data
         /// <returns></returns>
         public virtual string Format(Expression expression)
         {
-            // use SqlServer formatter by default
-            return TSqlFormatter.Format(expression);
+            // use common SQL formatter by default
+            return SqlFormatter.Format(expression);
         }
 
         /// <summary>

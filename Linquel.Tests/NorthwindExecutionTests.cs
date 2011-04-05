@@ -13,8 +13,8 @@ using System.Xml.Linq;
 
 namespace Test 
 {
-    using IQ;
-    using IQ.Data;
+    using IQToolkit;
+    using IQToolkit.Data;
 
     public class NorthwindExecutionTests : NorthwindTestHarness
     {

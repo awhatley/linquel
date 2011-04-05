@@ -11,7 +11,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     public abstract class QueryType
     {
@@ -25,6 +25,7 @@ namespace IQ.Data
     public abstract class QueryTypeSystem 
     {
         public abstract QueryType Parse(string typeDeclaration);
-        public abstract QueryType GetColumnType(Type type);        
+        public abstract QueryType GetColumnType(Type type);
+        public abstract string GetVariableDeclaration(QueryType type, bool suppressSize);
     }
 }

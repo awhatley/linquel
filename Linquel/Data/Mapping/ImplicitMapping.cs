@@ -10,12 +10,12 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
-    /// A simple query mapping that attempts to infer mapping from naming conventionss
+    /// A simple query mapping that attempts to infer mapping from naming conventions
     /// </summary>
-    public class ImplicitMapping : QueryMapping
+    public class ImplicitMapping : BasicMapping
     {
         public ImplicitMapping(QueryLanguage language)
             : base(language)
@@ -25,10 +25,10 @@ namespace IQ.Data
         public override MappingEntity GetEntity(Type type)
         {
             string tableName = this.InferTableName(type);
-            return this.GetEntity(type, tableName);
+            return this.GetEntity(type, tableName, type);
         }
 
-        public override bool IsIdentity(MappingEntity entity, MemberInfo member)
+        protected override bool IsPrimaryKey(MappingEntity entity, MemberInfo member)
         {
             // Customers has CustomerID, Orders has OrderID, etc
             if (this.IsColumn(entity, member)) 
@@ -53,7 +53,7 @@ namespace IQ.Data
             return name;
         }
 
-        public override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
+        protected override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
         {
             if (IsMapped(entity, member) && !IsColumn(entity, member))
             {
@@ -63,7 +63,23 @@ namespace IQ.Data
             return false;
         }
 
-        public override void GetAssociationKeys(MappingEntity entity, MemberInfo member, out List<MemberInfo> members1, out List<MemberInfo> members2)
+        protected override IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
+        {
+            List<MemberInfo> keyMembers;
+            List<MemberInfo> relatedKeyMembers;
+            this.GetAssociationKeys(entity, member, out keyMembers, out relatedKeyMembers);
+            return keyMembers;
+        }
+
+        protected override IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
+        {
+            List<MemberInfo> keyMembers;
+            List<MemberInfo> relatedKeyMembers;
+            this.GetAssociationKeys(entity, member, out keyMembers, out relatedKeyMembers);
+            return relatedKeyMembers;
+        }
+
+        private void GetAssociationKeys(MappingEntity entity, MemberInfo member, out List<MemberInfo> keyMembers, out List<MemberInfo> relatedKeyMembers)
         {
             MappingEntity entity2 = GetRelatedEntity(entity, member);
 
@@ -71,19 +87,18 @@ namespace IQ.Data
             var map1 = this.GetMappedMembers(entity).Where(m => this.IsColumn(entity, m)).ToDictionary(m => m.Name);
             var map2 = this.GetMappedMembers(entity2).Where(m => this.IsColumn(entity2, m)).ToDictionary(m => m.Name);
             var commonNames = map1.Keys.Intersect(map2.Keys).OrderBy(k => k);
-            members1 = new List<MemberInfo>();
-            members2 = new List<MemberInfo>();
+            keyMembers = new List<MemberInfo>();
+            relatedKeyMembers = new List<MemberInfo>();
             foreach (string name in commonNames)
             {
-                members1.Add(map1[name]);
-                members2.Add(map2[name]);
+                keyMembers.Add(map1[name]);
+                relatedKeyMembers.Add(map2[name]);
             }
         }
 
-        public override string GetTableName(MappingEntity entity)
+        protected override string GetTableName(MappingEntity entity)
         {
-            string name = !string.IsNullOrEmpty(entity.TableID) ? entity.TableID : this.InferTableName(entity.Type);
-            return this.Language.Quote(name);
+            return !string.IsNullOrEmpty(entity.EntityID) ? entity.EntityID : this.InferTableName(entity.EntityType);
         }
 
         private string InferTableName(Type rowType)

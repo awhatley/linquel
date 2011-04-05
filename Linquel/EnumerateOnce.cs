@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
-namespace IQ
+namespace IQToolkit
 {
     public class EnumerateOnce<T> : IEnumerable<T>, IEnumerable
     {

@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Removes column declarations in SelectExpression's that are not referenced
@@ -160,15 +160,30 @@ namespace IQ.Data
 
         protected override Expression VisitJoin(JoinExpression join)
         {
-            // visit join in reverse order
-            Expression condition = this.Visit(join.Condition);
-            Expression right = this.VisitSource(join.Right);
-            Expression left = this.VisitSource(join.Left);
-            if (left != join.Left || right != join.Right || condition != join.Condition)
+            if (join.Join == JoinType.SingletonLeftOuter)
             {
-                return new JoinExpression(join.Join, left, right, condition);
+                // first visit right side w/o looking at condition
+                Expression right = this.Visit(join.Right);
+                AliasedExpression ax = right as AliasedExpression;
+                if (ax != null && !this.allColumnsUsed.ContainsKey(ax.Alias))
+                {
+                    // if nothing references the alias on the right, then the join is redundant
+                    return this.Visit(join.Left);
+                }
+                // otherwise do it the right way
+                Expression cond = this.Visit(join.Condition);
+                Expression left = this.Visit(join.Left);
+                right = this.Visit(join.Right);
+                return this.UpdateJoin(join, join.Join, left, right, cond);
             }
-            return join;
+            else
+            {
+                // visit join in reverse order
+                Expression condition = this.Visit(join.Condition);
+                Expression right = this.VisitSource(join.Right);
+                Expression left = this.VisitSource(join.Left);
+                return this.UpdateJoin(join, join.Join, left, right, condition);
+            }
         }
     }
 }

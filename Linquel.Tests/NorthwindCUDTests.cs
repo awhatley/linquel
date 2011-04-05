@@ -5,8 +5,8 @@ using System.Linq.Expressions;
 using System.Data;
 using System.Data.SqlClient;
 using System.Text;
-using IQ;
-using IQ.Data;
+using IQToolkit;
+using IQToolkit.Data;
 
 namespace Test
 {
@@ -22,23 +22,20 @@ namespace Test
             new NorthwindCUDTests().RunTest(db, null, true, testName);
         }
 
-        protected override void Setup()
+        protected override void SetupTest()
         {
             this.CleaupDatabase();
         }
 
-        protected override void Teardown()
+        protected override void TeardownTest()
         {
             this.CleaupDatabase();
         }
 
         private void CleaupDatabase()
         {
-            var con = (SqlConnection)this.provider.Connection;
-            var cmd = new SqlCommand("DELETE FROM [Orders] WHERE CustomerID LIKE 'XX%'", con);
-            cmd.ExecuteNonQuery();
-            cmd = new SqlCommand("DELETE FROM [Customers] WHERE CustomerID LIKE 'XX%'", con);
-            cmd.ExecuteNonQuery();
+            this.Exec("DELETE FROM [Orders] WHERE CustomerID LIKE 'XX%'");
+            this.Exec("DELETE FROM [Customers] WHERE CustomerID LIKE 'XX%'");
         }
 
         public void TestInsertCustomerNoResult()

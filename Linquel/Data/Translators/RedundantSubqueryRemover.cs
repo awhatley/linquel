@@ -10,7 +10,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data
 {
     /// <summary>
     /// Removes select expressions that don't add any additional semantic value
@@ -173,7 +173,7 @@ namespace IQ.Data
                     {
                         if (where != null)
                         {
-                            where = Expression.And(fromSelect.Where, where);
+                            where = fromSelect.Where.And(where);
                         }
                         else
                         {
@@ -238,7 +238,7 @@ namespace IQ.Data
                 if (selHasOrderBy && frmHasOrderBy)
                     return false;
                 // both cannot have groupby
-                if (selHasOrderBy && frmHasOrderBy)
+                if (selHasGroupBy && frmHasGroupBy)
                     return false;
                 // cannot move forward order-by if outer has group-by
                 if (frmHasOrderBy && (selHasGroupBy || selHasAggregates || select.IsDistinct))

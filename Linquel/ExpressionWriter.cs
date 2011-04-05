@@ -11,7 +11,7 @@ using System.Reflection;
 using System.Text;
 using System.IO;
 
-namespace IQ
+namespace IQToolkit
 {
     /// <summary>
     /// Writes out an expression tree in a C#-ish syntax

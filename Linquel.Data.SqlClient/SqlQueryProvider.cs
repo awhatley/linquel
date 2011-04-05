@@ -14,36 +14,46 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQ.Data
+namespace IQToolkit.Data.SqlClient
 {
     public class SqlQueryProvider : DbQueryProvider
     {
-        public SqlQueryProvider(SqlConnection connection, QueryPolicy policy, TextWriter log)
-            : base(connection, policy, log)
+        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping)
+            : base(connection, mapping, null)
         {
         }
 
-        protected override DbCommand GetCommand(QueryCommand query, object[] paramValues)
+        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping, TextWriter log)
+            : base(connection, mapping, log)
         {
-            // create command object (and fill in parameters)
-            SqlCommand cmd = new SqlCommand(query.CommandText, (SqlConnection)this.Connection);
-            for (int i = 0, n = query.Parameters.Count; i < n; i++)
-            {
-                QueryParameter qp = query.Parameters[i];
-                TSqlType sqlType = (TSqlType)qp.QueryType;
-                if (sqlType == null)
-                    sqlType = (TSqlType)this.Language.TypeSystem.GetColumnType(qp.Type);
-                var p = cmd.Parameters.Add("@" + qp.Name, sqlType.SqlDbType, sqlType.Length);
-                if (sqlType.Precision != 0)
-                    p.Precision = (byte)sqlType.Precision;
-                if (sqlType.Scale != 0)
-                    p.Scale = (byte)sqlType.Scale;
-                if (paramValues != null)
-                {
-                    p.Value = paramValues[i] ?? DBNull.Value;
-                }
-            }
-            return cmd;
+        }
+
+        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
+            : base(connection, mapping, policy, log)
+        {
+        }
+
+        public override DbQueryProvider Create(DbConnection connection, QueryMapping mapping, QueryPolicy policy, TextWriter log)
+        {
+            return new SqlQueryProvider((SqlConnection)connection, mapping, policy, log);
+        }
+
+        public static string GetExpressConnectionString(string databaseFile)
+        {
+            return string.Format(@"Data Source=.\SQLEXPRESS;Integrated Security=True;Connect Timeout=30;User Instance=True;MultipleActiveResultSets=true;AttachDbFilename='{0}'", databaseFile);
+        }
+
+        protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        {
+            TSqlType sqlType = (TSqlType)parameter.QueryType;
+            if (sqlType == null)
+                sqlType = (TSqlType)this.Language.TypeSystem.GetColumnType(parameter.Type);
+            var p = ((SqlCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, sqlType.Length);
+            if (sqlType.Precision != 0)
+                p.Precision = (byte)sqlType.Precision;
+            if (sqlType.Scale != 0)
+                p.Scale = (byte)sqlType.Scale;
+            p.Value = value ?? DBNull.Value;
         }
 
         public override IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream)
@@ -67,7 +77,7 @@ namespace IQ.Data
             {
                 var qp = query.Parameters[i];
                 cmd.Parameters[i].SourceColumn = qp.Name;
-                dataTable.Columns.Add(qp.Name, qp.Type);
+                dataTable.Columns.Add(qp.Name, TypeHelper.GetNonNullableType(qp.Type));
             }
             SqlDataAdapter dataAdapter = new SqlDataAdapter();
             dataAdapter.InsertCommand = cmd;
@@ -75,6 +85,7 @@ namespace IQ.Data
             dataAdapter.UpdateBatchSize = batchSize;
 
             this.LogMessage("-- Start SQL Batching --");
+            this.LogMessage("");
             this.LogCommand(query, null);
 
             IEnumerator<object[]> en = paramSets.GetEnumerator();
@@ -88,8 +99,8 @@ namespace IQ.Data
                     {
                         var paramValues = en.Current;
                         dataTable.Rows.Add(paramValues);
-                        this.LogMessage("");
                         this.LogParameters(query, paramValues);
+                        this.LogMessage("");
                     }
                     if (count > 0)
                     {
@@ -104,6 +115,7 @@ namespace IQ.Data
             }
 
             this.LogMessage(string.Format("-- End SQL Batching --"));
+            this.LogMessage("");
         }
     }
 }
