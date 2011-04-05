@@ -22,6 +22,11 @@ namespace Sample {
         }
     }
 
+    /// <summary>
+    /// ColumnProjection is a visitor that splits an expression representing the result of a query into 
+    /// two parts, a list of column declarations of expressions that must be evaluated on the server
+    /// and a projector expression that describes how to combine the columns back into the result object
+    /// </summary>
     internal class ColumnProjector : DbExpressionVisitor {
         Nominator nominator;
         Dictionary<ColumnExpression, ColumnExpression> map;
@@ -95,6 +100,10 @@ namespace Sample {
             return this.GetUniqueColumnName("c" + (iColumn++));
         }
 
+        /// <summary>
+        /// Nominator is a class that walks an expression tree bottom up, determining the set of 
+        /// candidate expressions that are possible columns of a select expression
+        /// </summary>
         class Nominator : DbExpressionVisitor {
             Func<Expression, bool> fnCanBeColumn;
             bool isBlocked;

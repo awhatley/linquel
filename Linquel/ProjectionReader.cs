@@ -9,11 +9,20 @@ using System.Text;
 
 namespace Sample {
 
+    /// <summary>
+    /// A ProjectionRow is an abstract over a row based data source
+    /// </summary>
     public abstract class ProjectionRow {
         public abstract object GetValue(int index);
         public abstract IEnumerable<E> ExecuteSubQuery<E>(LambdaExpression query);
     }
 
+    /// <summary>
+    /// ProjectionBuilder is a visitor that converts an projector expression
+    /// that constructs result objects out of ColumnExpressions into an actual
+    /// LambdaExpression that constructs result objects out of accessing fields
+    /// of a ProjectionRow
+    /// </summary>
     internal class ProjectionBuilder : DbExpressionVisitor {
         ParameterExpression row;
         string rowAlias;
@@ -52,6 +61,12 @@ namespace Sample {
         }
     }
 
+
+    /// <summary>
+    /// ProjectionReader is an implemention of IEnumerable that converts data from DbDataReader into
+    /// objects via a projector function,
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
     internal class ProjectionReader<T> : IEnumerable<T>, IEnumerable {
         Enumerator enumerator;
 

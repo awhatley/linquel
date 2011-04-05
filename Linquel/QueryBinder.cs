@@ -7,6 +7,10 @@ using System.Reflection;
 using System.Text;
 
 namespace Sample {
+    /// <summary>
+    /// QueryBinder is a visitor that converts method calls to LINQ operations into 
+    /// custom DbExpression nodes and references to class members into references to columns
+    /// </summary>
     internal class QueryBinder : ExpressionVisitor {
         ColumnProjector columnProjector;
         Dictionary<ParameterExpression, Expression> map;
@@ -73,6 +77,14 @@ namespace Sample {
                             (LambdaExpression)StripQuotes(m.Arguments[3]),
                             (LambdaExpression)StripQuotes(m.Arguments[4])
                             );
+                    case "OrderBy":
+                        return this.BindOrderBy(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Ascending);
+                    case "OrderByDescending":
+                        return this.BindOrderBy(m.Type, m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Descending);
+                    case "ThenBy":
+                        return this.BindThenBy(m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Ascending);
+                    case "ThenByDescending":
+                        return this.BindThenBy(m.Arguments[0], (LambdaExpression)StripQuotes(m.Arguments[1]), OrderType.Descending);
                 }
             }
             return base.VisitMethodCall(m);
@@ -142,6 +154,42 @@ namespace Sample {
                 new SelectExpression(resultType, alias, pc.Columns, join, null),
                 pc.Projector
                 );
+        }
+
+        List<OrderExpression> thenBys;
+
+        protected virtual Expression BindOrderBy(Type resultType, Expression source, LambdaExpression orderSelector, OrderType orderType) {
+            List<OrderExpression> myThenBys = this.thenBys;
+            this.thenBys = null;
+            ProjectionExpression projection = (ProjectionExpression)this.Visit(source);
+
+            this.map[orderSelector.Parameters[0]] = projection.Projector;
+            List<OrderExpression> orderings = new List<OrderExpression>();
+            orderings.Add(new OrderExpression(orderType, this.Visit(orderSelector.Body)));
+
+            if (myThenBys != null) {
+                for (int i = myThenBys.Count - 1; i >= 0; i--) {
+                    OrderExpression tb = myThenBys[i];
+                    LambdaExpression lambda = (LambdaExpression)tb.Expression;
+                    this.map[lambda.Parameters[0]] = projection.Projector;
+                    orderings.Add(new OrderExpression(tb.OrderType, this.Visit(lambda.Body)));
+                }
+            }
+
+            string alias = this.GetNextAlias();
+            ProjectedColumns pc = this.ProjectColumns(projection.Projector, alias, projection.Source.Alias);
+            return new ProjectionExpression(
+                new SelectExpression(resultType, alias, pc.Columns, projection.Source, null, orderings.AsReadOnly()),
+                pc.Projector
+                );
+        }
+
+        protected virtual Expression BindThenBy(Expression source, LambdaExpression orderSelector, OrderType orderType) {
+            if (this.thenBys == null) {
+                this.thenBys = new List<OrderExpression>();
+            }
+            this.thenBys.Add(new OrderExpression(orderType, orderSelector));
+            return this.Visit(source);
         }
 
         private bool IsTable(Expression expression) {

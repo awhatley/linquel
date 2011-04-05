@@ -8,6 +8,9 @@ using System.Text;
 
 namespace Sample {
 
+    /// <summary>
+    /// A basic abstract LINQ query provider
+    /// </summary>
     public abstract class QueryProvider : IQueryProvider {
         protected QueryProvider() {
         }
@@ -38,6 +41,9 @@ namespace Sample {
         public abstract object Execute(Expression expression);
     }
 
+    /// <summary>
+    /// A default implementation of IQueryable for use with QueryProvider
+    /// </summary>
     public class Query<T> : IQueryable<T>, IQueryable, IEnumerable<T>, IEnumerable, IOrderedQueryable<T>, IOrderedQueryable {
         QueryProvider provider;
         Expression expression;

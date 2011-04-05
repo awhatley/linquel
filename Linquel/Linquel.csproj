@@ -50,6 +50,7 @@
     <Compile Include="DbQueryProvider.cs" />
     <Compile Include="Evaluator.cs" />
     <Compile Include="ExpressionVisitor.cs" />
+    <Compile Include="OrderByRewriter.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ProjectionReader.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

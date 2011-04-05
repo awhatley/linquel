@@ -5,6 +5,9 @@ using System.Linq.Expressions;
 using System.Text;
 
 namespace Sample {
+    /// <summary>
+    /// A visitor that replaces references to one specific instance of a node with another
+    /// </summary>
     internal class Replacer : DbExpressionVisitor {
         Expression searchFor;
         Expression replaceWith;

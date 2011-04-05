@@ -5,6 +5,9 @@ using System.Reflection;
 using System.Text;
 
 namespace Sample {
+    /// <summary>
+    /// Type related helper methods
+    /// </summary>
     internal static class TypeSystem {
         private static Type FindIEnumerable(Type seqType) {
             if (seqType == null || seqType == typeof(string))

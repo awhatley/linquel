@@ -48,16 +48,10 @@ namespace Sample {
                 con.Open();
                 Northwind db = new Northwind(con);
 
-                // join
                 var query = from c in db.Customers
-                            join o in db.Orders on c.CustomerID equals o.CustomerID
-                            select new { c.ContactName, o.OrderDate };
-
-                // nested from's (SelectMany)
-                //var query = from c in db.Customers
-                //            from o in db.Orders
-                //            where c.CustomerID == o.CustomerID
-                //            select new { c.ContactName, o.OrderDate };
+                            orderby c.City
+                            where c.Country == "UK"
+                            select new { c.City, c.ContactName };
 
                 Console.WriteLine(query);
 

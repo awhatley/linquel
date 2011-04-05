@@ -11,6 +11,9 @@ using System.Text;
 
 namespace Sample {
 
+    /// <summary>
+    /// A LINQ query provider that executes SQL queries over a DbConnection
+    /// </summary>
     public class DbQueryProvider : QueryProvider {
         DbConnection connection;
         TextWriter log;
@@ -62,7 +65,9 @@ namespace Sample {
             ProjectionExpression projection = expression as ProjectionExpression;
             if (projection == null) {
                 expression = Evaluator.PartialEval(expression, CanBeEvaluatedLocally);
-                projection = (ProjectionExpression)new QueryBinder(this).Bind(expression);
+                expression = new QueryBinder(this).Bind(expression);
+                expression = new OrderByRewriter().Rewrite(expression);
+                projection = (ProjectionExpression)expression;
             }
             string commandText = new QueryFormatter().Format(projection.Source);
             LambdaExpression projector = new ProjectionBuilder().Build(projection.Projector, projection.Source.Alias);
@@ -73,6 +78,5 @@ namespace Sample {
             return expression.NodeType != ExpressionType.Parameter &&
                    expression.NodeType != ExpressionType.Lambda;
         }
-
     } 
 }
