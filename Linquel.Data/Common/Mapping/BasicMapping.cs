@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -15,16 +14,8 @@ namespace IQToolkit.Data.Common
 {
     public abstract class BasicMapping : QueryMapping
     {
-        QueryLanguage language;
-
-        protected BasicMapping(QueryLanguage language)
+        protected BasicMapping()
         {
-            this.language = language;
-        }
-
-        public override QueryLanguage Language
-        {
-            get { return this.language; }
         }
 
         public override MappingEntity GetEntity(Type elementType, string tableId)
@@ -77,7 +68,7 @@ namespace IQToolkit.Data.Common
         /// </summary>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual bool IsMapped(MappingEntity entity, MemberInfo member)
+        public virtual bool IsMapped(MappingEntity entity, MemberInfo member)
         {
             return true;
         }
@@ -87,9 +78,21 @@ namespace IQToolkit.Data.Common
         /// </summary>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual bool IsColumn(MappingEntity entity, MemberInfo member)
+        public virtual bool IsColumn(MappingEntity entity, MemberInfo member)
         {
-            return this.IsMapped(entity, member) && this.Language.IsScalar(TypeHelper.GetMemberType(member));
+            //return this.mapping.IsMapped(entity, member) && this.translator.Linguist.Language.IsScalar(TypeHelper.GetMemberType(member));
+            return this.IsMapped(entity, member);
+        }
+
+        /// <summary>
+        /// The type declaration for the column in the provider's syntax
+        /// </summary>
+        /// <param name="entity"></param>
+        /// <param name="member"></param>
+        /// <returns>a string representing the type declaration or null</returns>
+        public virtual string GetColumnDbType(MappingEntity entity, MemberInfo member)
+        {
+            return null;
         }
 
         /// <summary>
@@ -107,7 +110,7 @@ namespace IQToolkit.Data.Common
         /// </summary>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual bool IsComputed(MappingEntity entity, MemberInfo member)
+        public virtual bool IsComputed(MappingEntity entity, MemberInfo member)
         {
             return false;
         }
@@ -117,7 +120,7 @@ namespace IQToolkit.Data.Common
         /// </summary>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual bool IsGenerated(MappingEntity entity, MemberInfo member)
+        public virtual bool IsGenerated(MappingEntity entity, MemberInfo member)
         {
             return false;
         }
@@ -128,7 +131,7 @@ namespace IQToolkit.Data.Common
         /// <param name="entity"></param>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual bool IsUpdatable(MappingEntity entity, MemberInfo member)
+        public virtual bool IsUpdatable(MappingEntity entity, MemberInfo member)
         {
             return !this.IsPrimaryKey(entity, member);
         }
@@ -138,7 +141,7 @@ namespace IQToolkit.Data.Common
         /// </summary>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual MappingEntity GetRelatedEntity(MappingEntity entity, MemberInfo member)
+        public virtual MappingEntity GetRelatedEntity(MappingEntity entity, MemberInfo member)
         {
             Type relatedType = TypeHelper.GetElementType(TypeHelper.GetMemberType(member));
             return this.GetEntity(relatedType);
@@ -150,7 +153,7 @@ namespace IQToolkit.Data.Common
         /// <param name="entity"></param>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
+        public virtual bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
         {
             return false;
         }
@@ -161,7 +164,7 @@ namespace IQToolkit.Data.Common
         /// <param name="entity"></param>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
+        public virtual IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
         {            
             return new MemberInfo[] { };
         }
@@ -172,17 +175,21 @@ namespace IQToolkit.Data.Common
         /// <param name="entity"></param>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
+        public virtual IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
         {
             return new MemberInfo[] { };
         }
+
+        public abstract bool IsRelationshipSource(MappingEntity entity, MemberInfo member);
+
+        public abstract bool IsRelationshipTarget(MappingEntity entity, MemberInfo member);
 
         /// <summary>
         /// The name of the corresponding database table
         /// </summary>
         /// <param name="rowType"></param>
         /// <returns></returns>
-        protected virtual string GetTableName(MappingEntity entity)
+        public virtual string GetTableName(MappingEntity entity)
         {
             return entity.EntityType.Name;
         }
@@ -192,19 +199,9 @@ namespace IQToolkit.Data.Common
         /// </summary>
         /// <param name="member"></param>
         /// <returns></returns>
-        protected virtual string GetColumnName(MappingEntity entity, MemberInfo member)
+        public virtual string GetColumnName(MappingEntity entity, MemberInfo member)
         {
             return member.Name;
-        }
-
-        /// <summary>
-        /// The query language specific type for the column
-        /// </summary>
-        /// <param name="member"></param>
-        /// <returns></returns>
-        protected virtual QueryType GetColumnType(MappingEntity entity, MemberInfo member)
-        {
-            return this.Language.TypeSystem.GetColumnType(TypeHelper.GetMemberType(member));
         }
 
         /// <summary>
@@ -221,28 +218,211 @@ namespace IQToolkit.Data.Common
             return members.OrderBy(m => m.Name);
         }
 
+        public override object CloneEntity(MappingEntity entity, object instance)
+        {
+            var clone = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(entity.EntityType);
+            foreach (var mi in this.GetMappedMembers(entity))
+            {
+                if (this.IsColumn(entity, mi))
+                {
+                    mi.SetValue(clone, mi.GetValue(instance));
+                }
+            }
+            return clone;
+        }
+
+        public override bool IsModified(MappingEntity entity, object instance, object original)
+        {
+            foreach (var mi in this.GetMappedMembers(entity))
+            {
+                if (this.IsColumn(entity, mi))
+                {
+                    if (!object.Equals(mi.GetValue(instance), mi.GetValue(original)))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        public override object GetPrimaryKey(MappingEntity entity, object instance)
+        {
+            object firstKey = null;
+            List<object> keys = null;
+            foreach (var mi in this.GetPrimaryKeyMembers(entity))
+            {
+                if (firstKey == null)
+                {
+                    firstKey = mi.GetValue(instance);
+                }
+                else
+                {
+                    if (keys == null)
+                    {
+                        keys = new List<object>();
+                        keys.Add(firstKey);
+                    }
+                    keys.Add(mi.GetValue(instance));
+                }
+            }
+            if (keys != null)
+            {
+                return new CompoundKey(keys.ToArray());
+            }
+            return firstKey;
+        }
+
+        public override Expression GetPrimaryKeyQuery(MappingEntity entity, Expression source, Expression[] keys)
+        {
+            // make predicate
+            ParameterExpression p = Expression.Parameter(entity.ElementType, "p");
+            Expression pred = null;
+            var idMembers = this.GetPrimaryKeyMembers(entity).ToList();
+            if (idMembers.Count != keys.Length)
+            {
+                throw new InvalidOperationException("Incorrect number of primary key values");
+            }
+            for (int i = 0, n = keys.Length; i < n; i++)
+            {
+                MemberInfo mem = idMembers[i];
+                Type memberType = TypeHelper.GetMemberType(mem);
+                if (keys[i] != null && TypeHelper.GetNonNullableType(keys[i].Type) != TypeHelper.GetNonNullableType(memberType))
+                {
+                    throw new InvalidOperationException("Primary key value is wrong type");
+                }
+                Expression eq = Expression.MakeMemberAccess(p, mem).Equal(keys[i]);
+                pred = (pred == null) ? eq : pred.And(eq);
+            }
+            var predLambda = Expression.Lambda(pred, p);
+
+            return Expression.Call(typeof(Queryable), "SingleOrDefault", new Type[] { entity.ElementType }, source, predLambda);
+        }
+
+        public override IEnumerable<EntityInfo> GetDependentEntities(MappingEntity entity, object instance)
+        {
+            foreach (var mi in this.GetMappedMembers(entity))
+            {
+                if (this.IsRelationship(entity, mi) && this.IsRelationshipSource(entity, mi))
+                {
+                    MappingEntity relatedEntity = this.GetRelatedEntity(entity, mi);
+                    var value = mi.GetValue(instance);
+                    if (value != null)
+                    {
+                        var list = value as IList;
+                        if (list != null)
+                        {
+                            foreach (var item in list)
+                            {
+                                if (item != null)
+                                {
+                                    yield return new EntityInfo(item, relatedEntity);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            yield return new EntityInfo(value, relatedEntity);
+                        }
+                    }
+                }
+            }
+        }
+
+        public override IEnumerable<EntityInfo> GetDependingEntities(MappingEntity entity, object instance)
+        {
+            foreach (var mi in this.GetMappedMembers(entity))
+            {
+                if (this.IsRelationship(entity, mi) && this.IsRelationshipTarget(entity, mi))
+                {
+                    MappingEntity relatedEntity = this.GetRelatedEntity(entity, mi);
+                    var value = mi.GetValue(instance);
+                    if (value != null)
+                    {
+                        var list = value as IList;
+                        if (list != null)
+                        {
+                            foreach (var item in list)
+                            {
+                                if (item != null)
+                                {
+                                    yield return new EntityInfo(item, relatedEntity);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            yield return new EntityInfo(value, relatedEntity);
+                        }
+                    }
+                }
+            }
+        }
+
+        public override QueryMapper CreateMapper(QueryTranslator translator)
+        {
+            return new BasicMapper(this, translator);
+        }
+    }
+
+    public class BasicMapper : QueryMapper
+    {
+        BasicMapping mapping;
+        QueryTranslator translator;
+
+        public BasicMapper(BasicMapping mapping, QueryTranslator translator)
+        {
+            this.mapping = mapping;
+            this.translator = translator;
+        }
+
+        public override QueryMapping Mapping
+        {
+            get { return this.mapping; }
+        }
+
+        public override QueryTranslator Translator
+        {
+            get { return this.translator; }
+        }
+
+        /// <summary>
+        /// The query language specific type for the column
+        /// </summary>
+        /// <param name="member"></param>
+        /// <returns></returns>
+        public virtual QueryType GetColumnType(MappingEntity entity, MemberInfo member)
+        {
+            string dbType = this.mapping.GetColumnDbType(entity, member);
+            if (dbType != null)
+            {
+                return this.translator.Linguist.Language.TypeSystem.Parse(dbType);
+            }
+            return this.translator.Linguist.Language.TypeSystem.GetColumnType(TypeHelper.GetMemberType(member));
+        }
+
         public override ProjectionExpression GetQueryExpression(MappingEntity entity)
         {
             var tableAlias = new TableAlias();
             var selectAlias = new TableAlias();
-            var table = new TableExpression(tableAlias, entity, this.GetTableName(entity));
+            var table = new TableExpression(tableAlias, entity, this.mapping.GetTableName(entity));
 
             Expression projector = this.GetEntityExpression(table, entity);
-            var pc = ColumnProjector.ProjectColumns(this.Language, projector, null, selectAlias, tableAlias);
+            var pc = ColumnProjector.ProjectColumns(this.translator.Linguist.Language, projector, null, selectAlias, tableAlias);
 
-            return new ProjectionExpression(
+            var proj = new ProjectionExpression(
                 new SelectExpression(selectAlias, pc.Columns, table, null),
                 pc.Projector
                 );
+
+            return (ProjectionExpression)this.Translator.Police.ApplyPolicy(proj, entity.ElementType);
         }
 
         public override EntityExpression GetEntityExpression(Expression root, MappingEntity entity)
         {
             // must be some complex type constructed from multiple columns
             var assignments = new List<EntityAssignment>();
-            foreach (MemberInfo mi in this.GetMappedMembers(entity))
+            foreach (MemberInfo mi in this.mapping.GetMappedMembers(entity))
             {
-                if (!this.IsAssociationRelationship(entity, mi))
+                if (!this.mapping.IsAssociationRelationship(entity, mi))
                 {
                     Expression me = this.GetMemberExpression(root, entity, mi);
                     if (me != null)
@@ -254,7 +434,6 @@ namespace IQToolkit.Data.Common
 
             return new EntityExpression(entity, BuildEntityExpression(entity, assignments));
         }
-
 
         public class EntityAssignment
         {
@@ -398,17 +577,29 @@ namespace IQToolkit.Data.Common
             }
         }
 
+        public override bool HasIncludedMembers(EntityExpression entity)
+        {
+            var policy = this.translator.Police.Policy;
+            foreach (var mi in this.mapping.GetMappedMembers(entity.Entity))
+            {
+                if (policy.IsIncluded(mi))
+                    return true;
+            }
+            return false;
+        }
+
         public override EntityExpression IncludeMembers(EntityExpression entity, Func<MemberInfo, bool> fnIsIncluded)
         {
             var assignments = this.GetAssignments(entity.Expression).ToDictionary(ma => ma.Member.Name);
             bool anyAdded = false;
-            foreach (var mi in this.GetMappedMembers(entity.Entity))
+            foreach (var mi in this.mapping.GetMappedMembers(entity.Entity))
             {
                 EntityAssignment ea;
-                if (!assignments.TryGetValue(mi.Name, out ea) && fnIsIncluded(mi))
+                bool okayToInclude = !assignments.TryGetValue(mi.Name, out ea) || IsNullRelationshipAssignment(entity.Entity, ea);
+                if (okayToInclude && fnIsIncluded(mi))
                 {
                     ea = new EntityAssignment(mi, this.GetMemberExpression(entity.Expression, entity.Entity, mi));
-                    assignments.Add(mi.Name, ea);
+                    assignments[mi.Name] = ea;
                     anyAdded = true;
                 }
             }
@@ -418,6 +609,18 @@ namespace IQToolkit.Data.Common
             }
             return entity;
         }
+
+        private bool IsNullRelationshipAssignment(MappingEntity entity, EntityAssignment assignment)
+        {
+            if (this.mapping.IsRelationship(entity, assignment.Member))
+            {
+                var cex = assignment.Expression as ConstantExpression;
+                if (cex != null && cex.Value == null)
+                    return true;
+            }
+            return false;
+        }
+
 
         private IEnumerable<EntityAssignment> GetAssignments(Expression newOrMemberInit)
         {
@@ -440,16 +643,17 @@ namespace IQToolkit.Data.Common
             return assignments;
         }
 
+
         public override Expression GetMemberExpression(Expression root, MappingEntity entity, MemberInfo member)
         {
-            if (this.IsAssociationRelationship(entity, member))
+            if (this.mapping.IsAssociationRelationship(entity, member))
             {
-                MappingEntity relatedEntity = this.GetRelatedEntity(entity, member);
+                MappingEntity relatedEntity = this.mapping.GetRelatedEntity(entity, member);
                 ProjectionExpression projection = this.GetQueryExpression(relatedEntity);
 
                 // make where clause for joining back to 'root'
-                var declaredTypeMembers = this.GetAssociationKeyMembers(entity, member).ToList();
-                var associatedMembers = this.GetAssociationRelatedKeyMembers(entity, member).ToList();
+                var declaredTypeMembers = this.mapping.GetAssociationKeyMembers(entity, member).ToList();
+                var associatedMembers = this.mapping.GetAssociationRelatedKeyMembers(entity, member).ToList();
 
                 Expression where = null;
                 for (int i = 0, n = associatedMembers.Count; i < n; i++)
@@ -462,20 +666,22 @@ namespace IQToolkit.Data.Common
                 }
 
                 TableAlias newAlias = new TableAlias();
-                var pc = ColumnProjector.ProjectColumns(this.Language, projection.Projector, null, newAlias, projection.Select.Alias);
+                var pc = ColumnProjector.ProjectColumns(this.translator.Linguist.Language, projection.Projector, null, newAlias, projection.Select.Alias);
 
                 LambdaExpression aggregator = Aggregator.GetAggregator(TypeHelper.GetMemberType(member), typeof(IEnumerable<>).MakeGenericType(pc.Projector.Type));
-                return new ProjectionExpression(
+                var result = new ProjectionExpression(
                     new SelectExpression(newAlias, pc.Columns, projection.Select, where),
                     pc.Projector, aggregator
                     );
+
+                return this.translator.Police.ApplyPolicy(result, member);
             }
             else
             {
                 AliasedExpression aliasedRoot = root as AliasedExpression;
-                if (aliasedRoot != null && this.IsColumn(entity, member))
+                if (aliasedRoot != null && this.mapping.IsColumn(entity, member))
                 {
-                    return new ColumnExpression(TypeHelper.GetMemberType(member), this.GetColumnType(entity, member), aliasedRoot.Alias, this.GetColumnName(entity, member));
+                    return new ColumnExpression(TypeHelper.GetMemberType(member), this.GetColumnType(entity, member), aliasedRoot.Alias, this.mapping.GetColumnName(entity, member));
                 }
                 return QueryBinder.BindMember(root, member);
             }
@@ -484,8 +690,8 @@ namespace IQToolkit.Data.Common
         public override Expression GetInsertExpression(MappingEntity entity, Expression instance, LambdaExpression selector)
         {
             var tableAlias = new TableAlias();
-            var table = new TableExpression(tableAlias, entity, this.GetTableName(entity));
-            var assignments = this.GetColumnAssignments(table, instance, entity, (e, m) => !this.IsGenerated(e, m));
+            var table = new TableExpression(tableAlias, entity, this.mapping.GetTableName(entity));
+            var assignments = this.GetColumnAssignments(table, instance, entity, (e, m) => !this.mapping.IsGenerated(e, m));
 
             if (selector != null)
             {
@@ -500,9 +706,9 @@ namespace IQToolkit.Data.Common
 
         private IEnumerable<ColumnAssignment> GetColumnAssignments(Expression table, Expression instance, MappingEntity entity, Func<MappingEntity, MemberInfo, bool> fnIncludeColumn)
         {
-            foreach (var m in this.GetMappedMembers(entity))
+            foreach (var m in this.mapping.GetMappedMembers(entity))
             {
-                if (this.IsColumn(entity, m) && fnIncludeColumn(entity, m))
+                if (this.mapping.IsColumn(entity, m) && fnIncludeColumn(entity, m))
                 {
                     yield return new ColumnAssignment(
                         (ColumnExpression)this.GetMemberExpression(table, entity, m),
@@ -515,12 +721,12 @@ namespace IQToolkit.Data.Common
         protected virtual Expression GetInsertResult(MappingEntity entity, Expression instance, LambdaExpression selector, Dictionary<MemberInfo, Expression> map)
         {
             var tableAlias = new TableAlias();
-            var tex = new TableExpression(tableAlias, entity, this.GetTableName(entity));
+            var tex = new TableExpression(tableAlias, entity, this.mapping.GetTableName(entity));
             var aggregator = Aggregator.GetAggregator(selector.Body.Type, typeof(IEnumerable<>).MakeGenericType(selector.Body.Type));
 
             Expression where;
             DeclarationCommand genIdCommand = null;
-            var generatedIds = this.GetMappedMembers(entity).Where(m => this.IsPrimaryKey(entity, m) && this.IsGenerated(entity, m)).ToList();
+            var generatedIds = this.mapping.GetMappedMembers(entity).Where(m => this.mapping.IsPrimaryKey(entity, m) && this.mapping.IsGenerated(entity, m)).ToList();
             if (generatedIds.Count > 0)
             {
                 if (map == null || !generatedIds.Any(m => map.ContainsKey(m)))
@@ -532,7 +738,7 @@ namespace IQToolkit.Data.Common
 
                 // is this just a retrieval of one generated id member?
                 var mex = selector.Body as MemberExpression;
-                if (mex != null && this.IsPrimaryKey(entity, mex.Member) && this.IsGenerated(entity, mex.Member))
+                if (mex != null && this.mapping.IsPrimaryKey(entity, mex.Member) && this.mapping.IsGenerated(entity, mex.Member))
                 {
                     if (genIdCommand != null)
                     {
@@ -546,9 +752,10 @@ namespace IQToolkit.Data.Common
                     else
                     {
                         TableAlias alias = new TableAlias();
+                        var colType = this.GetColumnType(entity, mex.Member);
                         return new ProjectionExpression(
-                            new SelectExpression(alias, new[] { new ColumnDeclaration("", map[mex.Member]) }, null, null),
-                            new ColumnExpression(TypeHelper.GetMemberType(mex.Member), this.GetColumnType(entity, mex.Member), alias, ""),
+                            new SelectExpression(alias, new[] { new ColumnDeclaration("", map[mex.Member], colType) }, null, null),
+                            new ColumnExpression(TypeHelper.GetMemberType(mex.Member), colType, alias, ""),
                             aggregator
                             );
                     }
@@ -566,7 +773,7 @@ namespace IQToolkit.Data.Common
             Expression typeProjector = this.GetEntityExpression(tex, entity);
             Expression selection = DbExpressionReplacer.Replace(selector.Body, selector.Parameters[0], typeProjector);
             TableAlias newAlias = new TableAlias();
-            var pc = ColumnProjector.ProjectColumns(this.Language, selection, null, newAlias, tableAlias);
+            var pc = ColumnProjector.ProjectColumns(this.translator.Linguist.Language, selection, null, newAlias, tableAlias);
             var pe = new ProjectionExpression(
                 new SelectExpression(newAlias, pc.Columns, tex, where),
                 pc.Projector,
@@ -587,10 +794,10 @@ namespace IQToolkit.Data.Common
             var alias = new TableAlias();
             foreach (var member in members)
             {
-                Expression genId = this.Language.GetGeneratedIdExpression(member);
+                Expression genId = this.translator.Linguist.Language.GetGeneratedIdExpression(member);
                 var name = member.Name;
-                columns.Add(new ColumnDeclaration(member.Name, genId));
                 var colType = this.GetColumnType(entity, member);
+                columns.Add(new ColumnDeclaration(member.Name, genId, colType));
                 decls.Add(new VariableDeclaration(member.Name, colType, new ColumnExpression(genId.Type, colType, alias, member.Name)));
                 if (map != null)
                 {
@@ -604,8 +811,8 @@ namespace IQToolkit.Data.Common
 
         protected virtual Expression GetIdentityCheck(Expression root, MappingEntity entity, Expression instance)
         {
-            return this.GetMappedMembers(entity)
-            .Where(m => this.IsPrimaryKey(entity, m))
+            return this.mapping.GetMappedMembers(entity)
+            .Where(m => this.mapping.IsPrimaryKey(entity, m))
             .Select(m => this.GetMemberExpression(root, entity, m).Equal(Expression.MakeMemberAccess(instance, m)))
             .Aggregate((x, y) => x.And(y));
         }
@@ -629,7 +836,7 @@ namespace IQToolkit.Data.Common
         public override Expression GetUpdateExpression(MappingEntity entity, Expression instance, LambdaExpression updateCheck, LambdaExpression selector, Expression @else)
         {
             var tableAlias = new TableAlias();
-            var table = new TableExpression(tableAlias, entity, this.GetTableName(entity));
+            var table = new TableExpression(tableAlias, entity, this.mapping.GetTableName(entity));
 
             var where = this.GetIdentityCheck(table, entity, instance);
             if (updateCheck != null)
@@ -639,7 +846,7 @@ namespace IQToolkit.Data.Common
                 where = where.And(pred);
             }
 
-            var assignments = this.GetColumnAssignments(table, instance, entity, (e, m) => this.IsUpdatable(e, m));
+            var assignments = this.GetColumnAssignments(table, instance, entity, (e, m) => this.mapping.IsUpdatable(e, m));
 
             Expression update = new UpdateCommand(table, where, assignments);
 
@@ -648,7 +855,7 @@ namespace IQToolkit.Data.Common
                 return new BlockCommand(
                     update,
                     new IFCommand(
-                        this.Language.GetRowsAffectedExpression(update).GreaterThan(Expression.Constant(0)),
+                        this.translator.Linguist.Language.GetRowsAffectedExpression(update).GreaterThan(Expression.Constant(0)),
                         this.GetUpdateResult(entity, instance, selector),
                         @else
                         )
@@ -659,7 +866,7 @@ namespace IQToolkit.Data.Common
                 return new BlockCommand(
                     update,
                     new IFCommand(
-                        this.Language.GetRowsAffectedExpression(update).LessThanOrEqual(Expression.Constant(0)),
+                        this.translator.Linguist.Language.GetRowsAffectedExpression(update).LessThanOrEqual(Expression.Constant(0)),
                         @else,
                         null
                         )
@@ -677,7 +884,7 @@ namespace IQToolkit.Data.Common
             Expression where = this.GetIdentityCheck(tq.Select, entity, instance);
             Expression selection = DbExpressionReplacer.Replace(selector.Body, selector.Parameters[0], tq.Projector);
             TableAlias newAlias = new TableAlias();
-            var pc = ColumnProjector.ProjectColumns(this.Language, selection, null, newAlias, tq.Select.Alias);
+            var pc = ColumnProjector.ProjectColumns(this.translator.Linguist.Language, selection, null, newAlias, tq.Select.Alias);
             return new ProjectionExpression(
                 new SelectExpression(newAlias, pc.Columns, tq.Select, where),
                 pc.Projector,
@@ -704,7 +911,7 @@ namespace IQToolkit.Data.Common
 
         public override Expression GetDeleteExpression(MappingEntity entity, Expression instance, LambdaExpression deleteCheck)
         {
-            TableExpression table = new TableExpression(new TableAlias(), entity, this.GetTableName(entity));
+            TableExpression table = new TableExpression(new TableAlias(), entity, this.mapping.GetTableName(entity));
             Expression where = null;
 
             if (instance != null)
@@ -720,148 +927,6 @@ namespace IQToolkit.Data.Common
             }
 
             return new DeleteCommand(table, where);
-        }
-
-        public override object CloneEntity(MappingEntity entity, object instance)
-        {
-            var clone = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(entity.EntityType);
-            foreach (var mi in this.GetMappedMembers(entity))
-            {
-                if (this.IsColumn(entity, mi))
-                {
-                    mi.SetValue(clone, mi.GetValue(instance));
-                }
-            }
-            return clone;
-        }
-
-        public override bool IsModified(MappingEntity entity, object instance, object original)
-        {
-            foreach (var mi in this.GetMappedMembers(entity))
-            {
-                if (this.IsColumn(entity, mi))
-                {
-                    if (!object.Equals(mi.GetValue(instance), mi.GetValue(original)))
-                        return true;
-                }
-            }
-            return false;
-        }
-
-        public override object GetPrimaryKey(MappingEntity entity, object instance)
-        {
-            object firstKey = null;
-            List<object> keys = null;
-            foreach (var mi in this.GetPrimaryKeyMembers(entity))
-            {
-                if (firstKey == null)
-                {
-                    firstKey = mi.GetValue(instance);
-                }
-                else
-                {
-                    if (keys == null)
-                    {
-                        keys = new List<object>();
-                        keys.Add(firstKey);
-                    }
-                    keys.Add(mi.GetValue(instance));
-                }
-            }
-            if (keys != null)
-            {
-                return new CompoundKey(keys.ToArray());
-            }
-            return firstKey;
-        }
-
-        public override Expression GetPrimaryKeyQuery(MappingEntity entity, Expression source, Expression[] keys)
-        {
-            // make predicate
-            ParameterExpression p = Expression.Parameter(entity.ElementType, "p");
-            Expression pred = null;
-            var idMembers = this.GetPrimaryKeyMembers(entity).ToList();
-            if (idMembers.Count != keys.Length)
-            {
-                throw new InvalidOperationException("Incorrect number of primary key values");
-            }
-            for (int i = 0, n = keys.Length; i < n; i++)
-            {
-                MemberInfo mem = idMembers[i];
-                Type memberType = TypeHelper.GetMemberType(mem);
-                if (keys[i] != null && TypeHelper.GetNonNullableType(keys[i].Type) != TypeHelper.GetNonNullableType(memberType))
-                {
-                    throw new InvalidOperationException("Primary key value is wrong type");
-                }
-                Expression eq = Expression.MakeMemberAccess(p, mem).Equal(keys[i]);
-                pred = (pred == null) ? eq : pred.And(eq);
-            }
-            var predLambda = Expression.Lambda(pred, p);
-
-            return Expression.Call(typeof(Queryable), "SingleOrDefault", new Type[] { entity.ElementType }, source, predLambda);
-        }
-
-        protected abstract bool IsRelationshipSource(MappingEntity entity, MemberInfo member);
-        protected abstract bool IsRelationshipTarget(MappingEntity entity, MemberInfo member);
-
-        public override IEnumerable<EntityInfo> GetDependentEntities(MappingEntity entity, object instance)
-        {
-            foreach (var mi in this.GetMappedMembers(entity))
-            {
-                if (this.IsRelationship(entity, mi) && this.IsRelationshipSource(entity, mi))
-                {
-                    MappingEntity relatedEntity = this.GetRelatedEntity(entity, mi);
-                    var value = mi.GetValue(instance);
-                    if (value != null)
-                    {
-                        var list = value as IList;
-                        if (list != null)
-                        {
-                            foreach (var item in list)
-                            {
-                                if (item != null)
-                                {
-                                    yield return new EntityInfo(item, relatedEntity);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            yield return new EntityInfo(value, relatedEntity);
-                        }
-                    }
-                }
-            }
-        }
-
-        public override IEnumerable<EntityInfo> GetDependingEntities(MappingEntity entity, object instance)
-        {
-            foreach (var mi in this.GetMappedMembers(entity))
-            {
-                if (this.IsRelationship(entity, mi) && this.IsRelationshipTarget(entity, mi))
-                {
-                    MappingEntity relatedEntity = this.GetRelatedEntity(entity, mi);
-                    var value = mi.GetValue(instance);
-                    if (value != null)
-                    {
-                        var list = value as IList;
-                        if (list != null)
-                        {
-                            foreach (var item in list)
-                            {
-                                if (item != null)
-                                {
-                                    yield return new EntityInfo(item, relatedEntity);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            yield return new EntityInfo(value, relatedEntity);
-                        }
-                    }
-                }
-            }
         }
     }
 }

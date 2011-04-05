@@ -16,7 +16,7 @@ namespace IQToolkit.Data.MySqlClient
 
     public class MySqlLanguage : QueryLanguage
     {
-        TSqlTypeSystem typeSystem = new TSqlTypeSystem();
+        DbTypeSystem typeSystem = new DbTypeSystem();
 
         public MySqlLanguage()
         {
@@ -60,23 +60,36 @@ namespace IQToolkit.Data.MySqlClient
             return fex != null && fex.Name == "ROW_COUNT()";
         }
 
-        public override Expression Translate(Expression expression)
+        public override QueryLinguist CreateLinguist(QueryTranslator translator)
         {
-            // fix up any order-by's
-            expression = OrderByRewriter.Rewrite(expression);
-
-            expression = base.Translate(expression);
-
-            expression = UnusedColumnRemover.Remove(expression);
-
-            //expression = DistinctOrderByRewriter.Rewrite(expression);
-
-            return expression;
+            return new MySqlLinguist(this, translator);
         }
 
-        public override string Format(Expression expression)
+        class MySqlLinguist : QueryLinguist
         {
-            return MySqlFormatter.Format(expression, this);
+            public MySqlLinguist(MySqlLanguage language, QueryTranslator translator)
+                : base(language, translator)
+            {
+            }
+
+            public override Expression Translate(Expression expression)
+            {
+                // fix up any order-by's
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+
+                expression = base.Translate(expression);
+
+                expression = UnusedColumnRemover.Remove(expression);
+
+                //expression = DistinctOrderByRewriter.Rewrite(expression);
+
+                return expression;
+            }
+
+            public override string Format(Expression expression)
+            {
+                return MySqlFormatter.Format(expression, this.Language);
+            }
         }
 
         public static readonly QueryLanguage Default = new MySqlLanguage();

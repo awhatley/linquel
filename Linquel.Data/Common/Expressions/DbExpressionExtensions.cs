@@ -14,6 +14,11 @@ namespace IQToolkit.Data.Common
 {
     public static class DbExpressionExtensions
     {
+        public static bool IsDbExpression(ExpressionType nodeType)
+        {
+            return (int)nodeType >= (int)DbExpressionType.Table;
+        }
+
         public static SelectExpression SetColumns(this SelectExpression select, IEnumerable<ColumnDeclaration> columns)
         {
             return new SelectExpression(select.Alias, columns.OrderBy(c => c.Name), select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take, select.IsReverse);
@@ -56,13 +61,14 @@ namespace IQToolkit.Data.Common
             return true;
         }
 
-        public static ProjectionExpression AddOuterJoinTest(this ProjectionExpression proj, Expression expression)
+        public static ProjectionExpression AddOuterJoinTest(this ProjectionExpression proj, QueryLanguage language, Expression expression)
         {
             string colName = proj.Select.Columns.GetAvailableColumnName("Test");
-            SelectExpression newSource = proj.Select.AddColumn(new ColumnDeclaration(colName, expression));
+            var colType = language.TypeSystem.GetColumnType(expression.Type);
+            SelectExpression newSource = proj.Select.AddColumn(new ColumnDeclaration(colName, expression, colType));
             Expression newProjector =
                 new OuterJoinedExpression(
-                    new ColumnExpression(expression.Type, null, newSource.Alias, colName),
+                    new ColumnExpression(expression.Type, colType, newSource.Alias, colName),
                     proj.Projector
                     );
             return new ProjectionExpression(newSource, newProjector, proj.Aggregator);
@@ -163,17 +169,15 @@ namespace IQToolkit.Data.Common
             return select;
         }
 
-        public static SelectExpression AddRedundantSelect(this SelectExpression select, TableAlias newAlias)
+        public static SelectExpression AddRedundantSelect(this SelectExpression sel, QueryLanguage language, TableAlias newAlias)
         {
-            var newColumns = select.Columns.Select(d => 
-                new ColumnDeclaration(d.Name, 
-                    new ColumnExpression(
-                        d.Expression.Type, 
-                        (d.Expression is ColumnExpression) ? ((ColumnExpression)d.Expression).QueryType : null,
-                        newAlias, d.Name
-                        )));
-            var newFrom = new SelectExpression(newAlias, select.Columns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take, select.IsReverse);
-            return new SelectExpression(select.Alias, newColumns, newFrom, null, null, null, false, null, null, false);
+            var newColumns = 
+                from d in sel.Columns
+                let qt = (d.Expression is ColumnExpression) ? ((ColumnExpression)d.Expression).QueryType : language.TypeSystem.GetColumnType(d.Expression.Type)
+                select new ColumnDeclaration(d.Name, new ColumnExpression(d.Expression.Type, qt, newAlias, d.Name), qt);
+
+            var newFrom = new SelectExpression(newAlias, sel.Columns, sel.From, sel.Where, sel.OrderBy, sel.GroupBy, sel.IsDistinct, sel.Skip, sel.Take, sel.IsReverse);
+            return new SelectExpression(sel.Alias, newColumns, newFrom, null, null, null, false, null, null, false);
         }
 
         public static SelectExpression RemoveRedundantFrom(this SelectExpression select)

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -13,7 +12,6 @@ using System.Text;
 
 namespace IQToolkit.Data.Common
 {
-
     /// <summary>
     /// Defines the language rules for the query provider
     /// </summary>
@@ -92,7 +90,8 @@ namespace IQToolkit.Data.Common
             {
                 if (test.Equals(col.Expression))
                 {
-                    testCol = new ColumnExpression(test.Type, null, select.Alias, col.Name);
+                    var colType = this.TypeSystem.GetColumnType(test.Type);
+                    testCol = new ColumnExpression(test.Type, colType, select.Alias, col.Name);
                     break;
                 }
             }
@@ -102,8 +101,9 @@ namespace IQToolkit.Data.Common
                 testCol = test as ColumnExpression;
                 string colName = (testCol != null) ? testCol.Name : "Test";
                 colName = proj.Select.Columns.GetAvailableColumnName(colName);
-                select = select.AddColumn(new ColumnDeclaration(colName, test));
-                testCol = new ColumnExpression(test.Type, null, select.Alias, colName);
+                var colType = this.TypeSystem.GetColumnType(test.Type);
+                select = select.AddColumn(new ColumnDeclaration(colName, test, colType));
+                testCol = new ColumnExpression(test.Type, colType, select.Alias, colName);
             }
             var newProjector = new OuterJoinedExpression(testCol, proj.Projector);
             return new ProjectionExpression(select, newProjector, proj.Aggregator);
@@ -196,21 +196,32 @@ namespace IQToolkit.Data.Common
             }
         }
 
-        public virtual bool IsAggregate(MethodInfo method)
+        public virtual bool IsAggregate(MemberInfo member)
         {
-            if (method.DeclaringType == typeof(Queryable) 
-                || method.DeclaringType == typeof(Enumerable))
+            var method = member as MethodInfo;
+            if (method != null)
             {
-                switch (method.Name)
+                if (method.DeclaringType == typeof(Queryable)
+                    || method.DeclaringType == typeof(Enumerable))
                 {
-                    case "Count":
-                    case "LongCount":
-                    case "Sum":
-                    case "Min":
-                    case "Max":
-                    case "Average":
-                        return true;
+                    switch (method.Name)
+                    {
+                        case "Count":
+                        case "LongCount":
+                        case "Sum":
+                        case "Min":
+                        case "Max":
+                        case "Average":
+                            return true;
+                    }
                 }
+            }
+            var property = member as PropertyInfo;
+            if (property != null
+                && property.Name == "Count"
+                && typeof(IEnumerable).IsAssignableFrom(property.DeclaringType))
+            {
+                return true;
             }
             return false;
         }
@@ -246,6 +257,33 @@ namespace IQToolkit.Data.Common
             }
         }
 
+        public virtual QueryLinguist CreateLinguist(QueryTranslator translator)
+        {
+            return new QueryLinguist(this, translator);
+        }
+    }
+
+    public class QueryLinguist
+    {
+        QueryLanguage language;
+        QueryTranslator translator;
+
+        public QueryLinguist(QueryLanguage language, QueryTranslator translator)
+        {
+            this.language = language;
+            this.translator = translator;
+        }
+
+        public QueryLanguage Language 
+        {
+            get { return this.language; }
+        }
+
+        public QueryTranslator Translator
+        {
+            get { return this.translator; }
+        }
+
         /// <summary>
         /// Provides language specific query translation.  Use this to apply language specific rewrites or
         /// to make assertions/validations about the query.
@@ -260,15 +298,20 @@ namespace IQToolkit.Data.Common
             expression = RedundantSubqueryRemover.Remove(expression);
 
             // convert cross-apply and outer-apply joins into inner & left-outer-joins if possible
-            expression = CrossApplyRewriter.Rewrite(this, expression);
-            // convert cross joins into inner joins
-            expression = CrossJoinRewriter.Rewrite(expression);
+            var rewritten = CrossApplyRewriter.Rewrite(this.language, expression);
 
-            // do final reduction
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-            expression = RedundantJoinRemover.Remove(expression);
-            expression = RedundantColumnRemover.Remove(expression);
+            // convert cross joins into inner joins
+            rewritten = CrossJoinRewriter.Rewrite(rewritten);
+
+            if (rewritten != expression)
+            {
+                expression = rewritten;
+                // do final reduction
+                expression = UnusedColumnRemover.Remove(expression);
+                expression = RedundantSubqueryRemover.Remove(expression);
+                expression = RedundantJoinRemover.Remove(expression);
+                expression = RedundantColumnRemover.Remove(expression);
+            }
 
             return expression;
         }
@@ -291,7 +334,7 @@ namespace IQToolkit.Data.Common
         /// <returns></returns>
         public virtual Expression Parameterize(Expression expression)
         {
-            return Parameterizer.Parameterize(this, expression);
+            return Parameterizer.Parameterize(this.language, expression);
         }
     }
 }

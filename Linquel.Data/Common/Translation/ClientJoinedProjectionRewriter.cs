@@ -17,18 +17,40 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class ClientJoinedProjectionRewriter : DbExpressionVisitor
     {
+        QueryPolicy policy;
         QueryLanguage language;
         bool isTopLevel = true;
         SelectExpression currentSelect;
+        MemberInfo currentMember;
+        bool canJoinOnClient = true;
 
-        private ClientJoinedProjectionRewriter(QueryLanguage language)
+        private ClientJoinedProjectionRewriter(QueryPolicy policy, QueryLanguage language)
         {
+            this.policy = policy;
             this.language = language;
         }
 
-        public static Expression Rewrite(QueryLanguage language, Expression expression)
+        public static Expression Rewrite(QueryPolicy policy, QueryLanguage language, Expression expression)
         {
-            return new ClientJoinedProjectionRewriter(language).Visit(expression);
+            return new ClientJoinedProjectionRewriter(policy, language).Visit(expression);
+        }
+
+        protected override MemberAssignment VisitMemberAssignment(MemberAssignment assignment)
+        {
+            var saveMember = this.currentMember;
+            this.currentMember = assignment.Member;
+            Expression e = this.Visit(assignment.Expression);
+            this.currentMember = saveMember;
+            return this.UpdateMemberAssignment(assignment, assignment.Member, e);
+        }
+
+        protected override Expression VisitMemberAndExpression(MemberInfo member, Expression expression)
+        {
+            var saveMember = this.currentMember;
+            this.currentMember = member;
+            Expression e = this.Visit(expression);
+            this.currentMember = saveMember;
+            return e;
         }
 
         protected override Expression VisitProjection(ProjectionExpression proj)
@@ -52,14 +74,14 @@ namespace IQToolkit.Data.Common
                         Expression newProjector = newInnerProjection.Projector;
 
                         TableAlias newAlias = new TableAlias();
-                        var pc = ColumnProjector.ProjectColumns(this.language, newProjector, newOuterSelect.Columns, newAlias, newOuterSelect.Alias, newInnerSelect.Alias);
+                        var pc = ColumnProjector.ProjectColumns(this.language, newProjector, null, newAlias, newOuterSelect.Alias, newInnerSelect.Alias);
 
                         JoinExpression join = new JoinExpression(JoinType.OuterApply, newOuterSelect, newInnerSelect, null);
                         SelectExpression joinedSelect = new SelectExpression(newAlias, pc.Columns, join, null, null, null, proj.IsSingleton, null, null, false);
 
                         // apply client-join treatment recursively
                         this.currentSelect = joinedSelect;
-                        newProjector = this.Visit(pc.Projector); 
+                        newProjector = this.Visit(pc.Projector);
 
                         // compute keys (this only works if join condition was a single column comparison)
                         List<Expression> outerKeys = new List<Expression>();
@@ -74,12 +96,19 @@ namespace IQToolkit.Data.Common
                             return new ClientJoinExpression(newProjection, outerKey, innerKey);
                         }
                     }
+                    else
+                    {
+                        bool saveJoin = this.canJoinOnClient;
+                        this.canJoinOnClient = false;
+                        var result = base.VisitProjection(proj);
+                        this.canJoinOnClient = saveJoin;
+                        return result;
+                    }
                 }
                 else
                 {
                     this.isTopLevel = false;
                 }
-
                 return base.VisitProjection(proj);
             }
             finally 
@@ -91,7 +120,11 @@ namespace IQToolkit.Data.Common
         private bool CanJoinOnClient(SelectExpression select)
         {
             // can add singleton (1:0,1) join if no grouping/aggregates or distinct
-            return !select.IsDistinct
+            return 
+                this.canJoinOnClient 
+                && this.currentMember != null 
+                && !this.policy.IsDeferLoaded(this.currentMember)
+                && !select.IsDistinct
                 && (select.GroupBy == null || select.GroupBy.Count == 0)
                 && !AggregateChecker.HasAggregates(select);
         }

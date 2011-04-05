@@ -17,19 +17,19 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class RelationshipIncluder : DbExpressionVisitor
     {
-        QueryMapping mapping;
+        QueryMapper mapper;
         QueryPolicy policy;
         ScopedDictionary<MemberInfo, bool> includeScope = new ScopedDictionary<MemberInfo, bool>(null);
 
-        private RelationshipIncluder(QueryMapping mapping, QueryPolicy policy)
+        private RelationshipIncluder(QueryMapper mapper)
         {
-            this.mapping = mapping;
-            this.policy = policy;
+            this.mapper = mapper;
+            this.policy = mapper.Translator.Police.Policy;
         }
 
-        public static Expression Include(QueryMapping mapping, QueryPolicy policy, Expression expression)
+        public static Expression Include(QueryMapper mapper, Expression expression)
         {
-            return new RelationshipIncluder(mapping, policy).Visit(expression);
+            return new RelationshipIncluder(mapper).Visit(expression);
         }
 
         protected override Expression VisitProjection(ProjectionExpression proj)
@@ -44,21 +44,24 @@ namespace IQToolkit.Data.Common
             this.includeScope = new ScopedDictionary<MemberInfo,bool>(this.includeScope);
             try
             {
-                entity = this.mapping.IncludeMembers(
-                    entity,  
-                    m => {
-                        if (this.includeScope.ContainsKey(m))
+                if (this.mapper.HasIncludedMembers(entity))
+                {
+                    entity = this.mapper.IncludeMembers(
+                        entity,
+                        m =>
                         {
+                            if (this.includeScope.ContainsKey(m))
+                            {
+                                return false;
+                            }
+                            if (this.policy.IsIncluded(m))
+                            {
+                                this.includeScope.Add(m, true);
+                                return true;
+                            }
                             return false;
-                        }
-                        if (this.policy.IsIncluded(m))
-                        {
-                            this.includeScope.Add(m, true);
-                            return true;
-                        }
-                        return false;
-                    });
-
+                        });
+                }
                 return base.VisitEntity(entity);
             }
             finally

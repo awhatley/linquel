@@ -61,7 +61,7 @@ namespace IQToolkit.Data.Common
             if (proj.IsSingleton && this.CanJoinOnServer(this.currentSelect))
             {
                 TableAlias newAlias = new TableAlias();
-                this.currentSelect = this.currentSelect.AddRedundantSelect(newAlias);
+                this.currentSelect = this.currentSelect.AddRedundantSelect(this.language, newAlias);
 
                 // remap any references to the outer select to the new alias;
                 SelectExpression source =(SelectExpression)ColumnMapper.Map(proj.Select, newAlias, this.currentSelect.Alias);

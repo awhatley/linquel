@@ -11,9 +11,11 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 
-namespace IQToolkit.Data.Common
+namespace IQToolkit.Data
 {
-    public class TSqlTypeSystem : QueryTypeSystem
+    using Common;
+
+    public class DbTypeSystem : QueryTypeSystem
     {        
         public override QueryType Parse(string typeDeclaration)
         {
@@ -150,7 +152,7 @@ namespace IQToolkit.Data.Common
 
         public virtual QueryType NewType(SqlDbType type, bool isNotNull, int length, short precision, short scale)
         {
-            return new TSqlType(type, isNotNull, length, precision, scale);
+            return new DbQueryType(type, isNotNull, length, precision, scale);
         }
 
         public virtual SqlDbType GetSqlType(string typeName)
@@ -296,7 +298,7 @@ namespace IQToolkit.Data.Common
 
         public override string GetVariableDeclaration(QueryType type, bool suppressSize)
         {
-            var sqlType = (TSqlType)type;
+            var sqlType = (DbQueryType)type;
             StringBuilder sb = new StringBuilder();
             sb.Append(sqlType.SqlDbType.ToString().ToUpper());
             if (sqlType.Length > 0 && !suppressSize)
@@ -325,7 +327,7 @@ namespace IQToolkit.Data.Common
         }
     }
 
-    public class TSqlType : QueryType
+    public class DbQueryType : QueryType
     {
         SqlDbType dbType;
         bool notNull;
@@ -333,7 +335,7 @@ namespace IQToolkit.Data.Common
         short precision;
         short scale;
 
-        public TSqlType(SqlDbType dbType, bool notNull, int length, short precision, short scale)
+        public DbQueryType(SqlDbType dbType, bool notNull, int length, short precision, short scale)
         {
             this.dbType = dbType;
             this.notNull = notNull;
@@ -342,9 +344,9 @@ namespace IQToolkit.Data.Common
             this.scale = scale;
         }
 
-        public override DbType DbType
+        public DbType DbType
         {
-            get { return TSqlTypeSystem.GetDbType(this.dbType); }
+            get { return DbTypeSystem.GetDbType(this.dbType); }
         }
 
         public SqlDbType SqlDbType

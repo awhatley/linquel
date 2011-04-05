@@ -95,11 +95,7 @@ namespace IQToolkit
 
             internal IQueryProvider FindProvider(Expression expression, object[] args)
             {
-                ConstantExpression root = TypedSubtreeFinder.Find(expression, typeof(IQueryProvider)) as ConstantExpression;
-                if (root == null)
-                {
-                    root = TypedSubtreeFinder.Find(expression, typeof(IQueryable)) as ConstantExpression;
-                }
+                Expression root = this.FindProviderInExpression(expression) as ConstantExpression;
                 if (root == null && args != null && args.Length > 0)
                 {
                     Expression replaced = ExpressionReplacer.ReplaceAll(
@@ -107,23 +103,40 @@ namespace IQToolkit
                         this.query.Parameters.ToArray(),
                         args.Select((a, i) => Expression.Constant(a, this.query.Parameters[i].Type)).ToArray()
                         );
-                    Expression partial = PartialEvaluator.Eval(replaced);
-                    return FindProvider(partial, null);
+                    root = this.FindProviderInExpression(replaced);
                 }
                 if (root != null) 
                 {
-                    IQueryProvider provider = root.Value as IQueryProvider;
-                    if (provider == null)
+                    ConstantExpression cex = root as ConstantExpression;
+                    if (cex == null)
                     {
-                        IQueryable query = root.Value as IQueryable;
-                        if (query != null)
-                        {
-                            provider = query.Provider;
-                        }
+                        cex = PartialEvaluator.Eval(root) as ConstantExpression;
                     }
-                    return provider;
+                    if (cex != null)
+                    {
+                        IQueryProvider provider = cex.Value as IQueryProvider;
+                        if (provider == null)
+                        {
+                            IQueryable query = cex.Value as IQueryable;
+                            if (query != null)
+                            {
+                                provider = query.Provider;
+                            }
+                        }
+                        return provider;
+                    }
                 }
                 return null;
+            }
+
+            private Expression FindProviderInExpression(Expression expression)
+            {
+                Expression root = TypedSubtreeFinder.Find(expression, typeof(IQueryProvider));
+                if (root == null)
+                {
+                    root = TypedSubtreeFinder.Find(expression, typeof(IQueryable));
+                }
+                return root;
             }
 
             public object Invoke(object[] args)
@@ -155,7 +168,7 @@ namespace IQToolkit
 
             private Func<object[], object> GetInvoker()
             {
-                if (this.fnQuery != null && this.invoker != null && !checkedForInvoker)
+                if (this.fnQuery != null && this.invoker == null && !checkedForInvoker)
                 {
                     this.checkedForInvoker = true;
                     Type fnType = this.fnQuery.GetType();

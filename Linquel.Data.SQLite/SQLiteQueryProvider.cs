@@ -16,6 +16,11 @@ namespace IQToolkit.Data.SQLite
     {
         Dictionary<QueryCommand, SQLiteCommand> commandCache = new Dictionary<QueryCommand, SQLiteCommand>();
 
+        public SQLiteQueryProvider(SQLiteConnection connection, QueryMapping mapping, QueryPolicy policy)
+            : base(connection, SQLiteLanguage.Default, mapping, policy)
+        {
+        }
+
         public static string GetConnectionString(string databaseFile)
         {
             return string.Format("Data Source={0};", databaseFile);
@@ -36,61 +41,67 @@ namespace IQToolkit.Data.SQLite
             return string.Format("Data Source={0};Password={1};FailIfMissing={2};", databaseFile, password, failIfMissing ? bool.TrueString : bool.FalseString);
         }
 
-        public SQLiteQueryProvider(SQLiteConnection connection, QueryMapping mapping)
-            : base(connection, mapping, QueryPolicy.Default)
-        {
-        }
-
-        public SQLiteQueryProvider(SQLiteConnection connection, QueryMapping mapping, QueryPolicy policy)
-            : base(connection, mapping, policy)
-        {
-        }
-
         public override DbEntityProvider New(DbConnection connection, QueryMapping mapping, QueryPolicy policy)
         {
             return new SQLiteQueryProvider((SQLiteConnection)connection, mapping, policy);
         }
 
-        protected override DbCommand GetCommand(QueryCommand query, object[] paramValues)
+        protected override QueryExecutor CreateExecutor()
         {
-            SQLiteCommand cmd;
-            if (!this.commandCache.TryGetValue(query, out cmd))
-            {
-                cmd = (SQLiteCommand)this.Connection.CreateCommand();
-                cmd.CommandText = query.CommandText;
-                this.SetParameterValues(query, cmd, paramValues);
-                cmd.Prepare();
-                this.commandCache.Add(query, cmd);
-                if (this.Transaction != null)
-                {
-                    cmd = (SQLiteCommand)cmd.Clone();
-                    cmd.Transaction = (SQLiteTransaction)this.Transaction;
-                }
-            }
-            else
-            {
-                cmd = (SQLiteCommand)cmd.Clone();
-                cmd.Transaction = (SQLiteTransaction)this.Transaction;
-                this.SetParameterValues(query, cmd, paramValues);
-            }
-            return cmd;
+            return new Executor(this);
         }
 
-        protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        new class Executor : DbEntityProvider.Executor
         {
-            QueryType qt = parameter.QueryType;
-            if (qt == null)
-                qt = this.Language.TypeSystem.GetColumnType(parameter.Type);
-            var p = ((SQLiteCommand)command).Parameters.Add(parameter.Name, qt.DbType, qt.Length);
-            if (qt.Length != 0)
+            SQLiteQueryProvider provider;
+
+            public Executor(SQLiteQueryProvider provider)
+                : base(provider)
             {
-                p.Size = qt.Length;
+                this.provider = provider;
             }
-            else if (qt.Scale != 0)
+
+            protected override DbCommand GetCommand(QueryCommand query, object[] paramValues)
             {
-                p.Size = qt.Scale;
+                SQLiteCommand cmd;
+                if (!this.provider.commandCache.TryGetValue(query, out cmd))
+                {
+                    cmd = (SQLiteCommand)this.provider.Connection.CreateCommand();
+                    cmd.CommandText = query.CommandText;
+                    this.SetParameterValues(query, cmd, paramValues);
+                    cmd.Prepare();
+                    this.provider.commandCache.Add(query, cmd);
+                    if (this.provider.Transaction != null)
+                    {
+                        cmd = (SQLiteCommand)cmd.Clone();
+                        cmd.Transaction = (SQLiteTransaction)this.provider.Transaction;
+                    }
+                }
+                else
+                {
+                    cmd = (SQLiteCommand)cmd.Clone();
+                    cmd.Transaction = (SQLiteTransaction)this.provider.Transaction;
+                    this.SetParameterValues(query, cmd, paramValues);
+                }
+                return cmd;
             }
-            p.Value = value ?? DBNull.Value;
+
+            protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+            {
+                QueryType qt = parameter.QueryType;
+                if (qt == null)
+                    qt = this.provider.Language.TypeSystem.GetColumnType(parameter.Type);
+                var p = ((SQLiteCommand)command).Parameters.Add(parameter.Name, ((DbQueryType)qt).DbType, qt.Length);
+                if (qt.Length != 0)
+                {
+                    p.Size = qt.Length;
+                }
+                else if (qt.Scale != 0)
+                {
+                    p.Size = qt.Scale;
+                }
+                p.Value = value ?? DBNull.Value;
+            }
         }
     }
 }

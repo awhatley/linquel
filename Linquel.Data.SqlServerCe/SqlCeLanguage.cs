@@ -17,7 +17,7 @@ namespace IQToolkit.Data.SqlServerCe
 
     public class SqlCeLanguage : QueryLanguage
     {
-        TSqlTypeSystem typeSystem = new TSqlTypeSystem();
+        DbTypeSystem typeSystem = new DbTypeSystem();
 
         public SqlCeLanguage() 
         {
@@ -61,26 +61,39 @@ namespace IQToolkit.Data.SqlServerCe
             return new FunctionExpression(TypeHelper.GetMemberType(member), "@@IDENTITY", null);
         }
 
-        public override Expression Translate(Expression expression)
+        public override QueryLinguist CreateLinguist(QueryTranslator translator)
         {
-            // fix up any order-by's
-            expression = OrderByRewriter.Rewrite(expression);
-
-            expression = base.Translate(expression);
-
-            expression = SkipToNestedOrderByRewriter.Rewrite(expression);
-            expression = OrderByRewriter.Rewrite(expression);
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-
-            expression = ScalarSubqueryRewriter.Rewrite(expression);
-            
-            return expression;
+            return new SqlCeLinguist(this, translator);
         }
 
-        public override string Format(Expression expression)
+        class SqlCeLinguist : QueryLinguist
         {
-            return SqlCeFormatter.Format(expression, this);
+            public SqlCeLinguist(SqlCeLanguage language, QueryTranslator translator)
+                : base(language, translator)
+            {
+            }
+
+            public override Expression Translate(Expression expression)
+            {
+                // fix up any order-by's
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+
+                expression = base.Translate(expression);
+
+                expression = SkipToNestedOrderByRewriter.Rewrite(this.Language, expression);
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+                expression = UnusedColumnRemover.Remove(expression);
+                expression = RedundantSubqueryRemover.Remove(expression);
+
+                expression = ScalarSubqueryRewriter.Rewrite(this.Language, expression);
+
+                return expression;
+            }
+
+            public override string Format(Expression expression)
+            {
+                return SqlCeFormatter.Format(expression, this.Language);
+            }
         }
 
         public static readonly QueryLanguage Default = new SqlCeLanguage();

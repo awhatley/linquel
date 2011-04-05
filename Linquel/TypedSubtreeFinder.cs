@@ -38,9 +38,10 @@ namespace IQToolkit
             Expression result = base.Visit(exp);
 
             // remember the first sub-expression that produces an IQueryable
-            if (this.root == null && result != null && this.type.IsAssignableFrom(result.Type))
+            if (this.root == null && result != null)
             {
-                this.root = result;
+                if (this.type.IsAssignableFrom(result.Type))
+                    this.root = result;
             }
 
             return result;

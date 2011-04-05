@@ -25,7 +25,7 @@ namespace IQToolkit
     }
 
     /// <summary>
-    /// A list implementation that is loaded the first the contents are examined
+    /// A list implementation that is loaded the first time the contents are examined
     /// </summary>
     /// <typeparam name="T"></typeparam>
     public class DeferredList<T> : IDeferredList<T>, ICollection<T>, IEnumerable<T>, IList, ICollection, IEnumerable, IDeferLoadable

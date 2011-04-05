@@ -16,6 +16,7 @@ namespace IQToolkit
         IEntityTable<T> GetTable<T>(string tableId);
         IEntityTable GetTable(Type type, string tableId);
         bool CanBeEvaluatedLocally(Expression expression);
+        bool CanBeParameter(Expression expression);
     }
 
     public interface IEntityTable : IQueryable, IUpdatable

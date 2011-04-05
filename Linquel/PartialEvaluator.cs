@@ -18,21 +18,28 @@ namespace IQToolkit
         /// Performs evaluation & replacement of independent sub-trees
         /// </summary>
         /// <param name="expression">The root of the expression tree.</param>
-        /// <param name="fnCanBeEvaluated">A function that decides whether a given expression node can be part of the local function.</param>
         /// <returns>A new tree with sub-trees evaluated and replaced.</returns>
-        public static Expression Eval(Expression expression, Func<Expression, bool> fnCanBeEvaluated)
+        public static Expression Eval(Expression expression)
         {
-            return SubtreeEvaluator.Eval(Nominator.Nominate(fnCanBeEvaluated, expression), expression);
+            return Eval(expression, null, null);
         }
 
         /// <summary>
         /// Performs evaluation & replacement of independent sub-trees
         /// </summary>
         /// <param name="expression">The root of the expression tree.</param>
+        /// <param name="fnCanBeEvaluated">A function that decides whether a given expression node can be part of the local function.</param>
         /// <returns>A new tree with sub-trees evaluated and replaced.</returns>
-        public static Expression Eval(Expression expression)
+        public static Expression Eval(Expression expression, Func<Expression, bool> fnCanBeEvaluated)
         {
-            return Eval(expression, PartialEvaluator.CanBeEvaluatedLocally);
+            return Eval(expression, fnCanBeEvaluated, null);
+        }
+
+        public static Expression Eval(Expression expression, Func<Expression, bool> fnCanBeEvaluated, Func<ConstantExpression, Expression> fnPostEval)
+        {
+            if (fnCanBeEvaluated == null)
+                fnCanBeEvaluated = PartialEvaluator.CanBeEvaluatedLocally;
+            return SubtreeEvaluator.Eval(Nominator.Nominate(fnCanBeEvaluated, expression), fnPostEval, expression);
         }
 
         private static bool CanBeEvaluatedLocally(Expression expression)
@@ -46,15 +53,17 @@ namespace IQToolkit
         class SubtreeEvaluator : ExpressionVisitor
         {
             HashSet<Expression> candidates;
+            Func<ConstantExpression, Expression> onEval;
 
-            private SubtreeEvaluator(HashSet<Expression> candidates)
+            private SubtreeEvaluator(HashSet<Expression> candidates, Func<ConstantExpression, Expression> onEval)
             {
                 this.candidates = candidates;
+                this.onEval = onEval;
             }
 
-            internal static Expression Eval(HashSet<Expression> candidates, Expression exp)
+            internal static Expression Eval(HashSet<Expression> candidates, Func<ConstantExpression, Expression> onEval, Expression exp)
             {
-                return new SubtreeEvaluator(candidates).Visit(exp);
+                return new SubtreeEvaluator(candidates, onEval).Visit(exp);
             }
 
             protected override Expression Visit(Expression exp)
@@ -68,6 +77,15 @@ namespace IQToolkit
                     return this.Evaluate(exp);
                 }
                 return base.Visit(exp);
+            }
+
+            private Expression PostEval(ConstantExpression e)
+            {
+                if (this.onEval != null)
+                {
+                    return this.onEval(e);
+                }
+                return e;
             }
 
             private Expression Evaluate(Expression e)
@@ -85,6 +103,7 @@ namespace IQToolkit
                 if (e.NodeType == ExpressionType.Constant)
                 {
                     // in case we actually threw out a nullable conversion above, simulate it here
+                    // don't post-eval nodes that were already constants
                     if (e.Type == type)
                     {
                         return e;
@@ -103,7 +122,7 @@ namespace IQToolkit
                     var ce = me.Expression as ConstantExpression;
                     if (ce != null)
                     {
-                        return Expression.Constant(me.Member.GetValue(ce.Value), type);
+                        return this.PostEval(Expression.Constant(me.Member.GetValue(ce.Value), type));
                     }
                 }
                 if (type.IsValueType)
@@ -116,7 +135,7 @@ namespace IQToolkit
 #else
                 Func<object> fn = lambda.Compile();
 #endif
-                return Expression.Constant(fn(), type);
+                return this.PostEval(Expression.Constant(fn(), type));
             }
         }
 

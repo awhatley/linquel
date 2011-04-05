@@ -71,7 +71,7 @@ namespace IQToolkit.Data.Common
                 foreach (var col in this.columns[ta])
                 {
                     string name = decls.GetAvailableColumnName(col.Name);
-                    var decl = new ColumnDeclaration(name, col);
+                    var decl = new ColumnDeclaration(name, col, col.QueryType);
                     decls.Add(decl);
                     var newCol = new ColumnExpression(col.Type, col.QueryType, newAlias, col.Name);
                     this.map.Add(col, newCol);

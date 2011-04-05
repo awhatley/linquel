@@ -271,12 +271,12 @@ namespace Test
 
         protected void TestQuery(IQueryable query)
         {
-            TestQuery((DbEntityProviderBase)query.Provider, query.Expression, currentMethod.Name, false);
+            TestQuery((EntityProvider)query.Provider, query.Expression, currentMethod.Name, false);
         }
 
         protected void TestQuery(IQueryable query, string baselineKey)
         {
-            TestQuery((DbEntityProviderBase)query.Provider, query.Expression, baselineKey, false);
+            TestQuery((EntityProvider)query.Provider, query.Expression, baselineKey, false);
         }
 
         protected void TestQuery(Expression<Func<object>> query)
@@ -291,7 +291,7 @@ namespace Test
 
         protected void TestQueryFails(IQueryable query)
         {
-            TestQuery((DbEntityProviderBase)query.Provider, query.Expression, currentMethod.Name, true);
+            TestQuery((EntityProvider)query.Provider, query.Expression, currentMethod.Name, true);
         }
 
         protected void TestQueryFails(Expression<Func<object>> query)
@@ -299,7 +299,7 @@ namespace Test
             TestQuery(this.provider, query.Body, currentMethod.Name, true);
         }
 
-        protected void TestQuery(DbEntityProviderBase pro, Expression query, string baselineKey, bool expectedToFail)
+        protected void TestQuery(EntityProvider pro, Expression query, string baselineKey, bool expectedToFail)
         {
             ConsoleColor originalColor = Console.ForegroundColor;
             try
@@ -326,7 +326,7 @@ namespace Test
                 catch (Exception e)
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine(string.Format("Table translation failed for {0}", baselineKey));
+                    Console.WriteLine(string.Format("Query translation failed for {0}", baselineKey));
                     Console.ForegroundColor = ConsoleColor.Gray;
                     Console.WriteLine(query.ToString());
                     throw new TestFailureException(e.Message);
@@ -359,7 +359,7 @@ namespace Test
                         if (!expectedToFail)
                         {
                             Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine("Table failed to execute:");
+                            Console.WriteLine("Query failed to execute:");
                             Console.ForegroundColor = ConsoleColor.Gray;
                             Console.WriteLine(queryText);
                             throw new TestFailureException(e.Message);
@@ -368,7 +368,7 @@ namespace Test
                     if (caught == null && expectedToFail)
                     {
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("Table succeeded when expected to fail");
+                        Console.WriteLine("Query succeeded when expected to fail");
                         Console.ForegroundColor = ConsoleColor.Gray;
                         Console.WriteLine(queryText);
                         throw new TestFailureException(null);
@@ -389,7 +389,7 @@ namespace Test
                     if (trimAct != trimBase)
                     {
                         Console.ForegroundColor = ConsoleColor.Yellow;
-                        Console.WriteLine("Table translation does not match baseline:");
+                        Console.WriteLine("Query translation does not match baseline:");
                         Console.ForegroundColor = ConsoleColor.Gray;
                         Console.WriteLine(queryText);
                         Console.ForegroundColor = ConsoleColor.Yellow;

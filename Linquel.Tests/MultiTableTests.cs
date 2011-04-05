@@ -27,14 +27,14 @@ namespace Test
         protected void RunTests(MultiTableContext db, string baselineFile, string newBaselineFile, bool executeQueries)
         {
             this.db = db;
-            DbEntityProvider provider = (DbEntityProvider)db.Provider;
+            var provider = (DbEntityProvider)db.Provider;
             base.RunTests(provider, baselineFile, newBaselineFile, executeQueries);
         }
 
         protected void RunTest(MultiTableContext db, string baselineFile, bool executeQueries, string testName)
         {
             this.db = db;
-            DbEntityProvider provider = (DbEntityProvider)db.Provider;
+            var provider = (DbEntityProvider)db.Provider;
             base.RunTest(provider, baselineFile, executeQueries, testName);
         }
 

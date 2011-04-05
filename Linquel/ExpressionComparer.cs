@@ -18,17 +18,20 @@ namespace IQToolkit
     public class ExpressionComparer
     {
         ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope;
-        bool exactMatch;
+        Func<object, object, bool> fnCompare;
 
-        protected ExpressionComparer(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, bool exactMatch)
+        protected ExpressionComparer(
+            ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope,
+            Func<object, object, bool> fnCompare
+            )
         {
             this.parameterScope = parameterScope;
-            this.exactMatch = exactMatch;
+            this.fnCompare = fnCompare;
         }
 
-        protected bool ExactMatch
+        protected Func<object, object, bool> FnCompare
         {
-            get { return this.exactMatch; }
+            get { return this.fnCompare; }
         }
 
         public static bool AreEqual(Expression a, Expression b)
@@ -36,19 +39,19 @@ namespace IQToolkit
             return AreEqual(null, a, b);
         }
 
-        public static bool AreEqual(Expression a, Expression b, bool exactMatch)
+        public static bool AreEqual(Expression a, Expression b, Func<object, object, bool> fnCompare)
         {
-            return AreEqual(null, a, b, exactMatch);
+            return AreEqual(null, a, b, fnCompare);
         }
 
         public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, Expression a, Expression b)
         {
-            return new ExpressionComparer(parameterScope, true).Compare(a, b);
+            return new ExpressionComparer(parameterScope, null).Compare(a, b);
         }
 
-        public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, Expression a, Expression b, bool exactMatch)
+        public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, Expression a, Expression b, Func<object, object, bool> fnCompare)
         {
-            return new ExpressionComparer(parameterScope, exactMatch).Compare(a, b);
+            return new ExpressionComparer(parameterScope, fnCompare).Compare(a, b);
         }
 
         protected virtual bool Compare(Expression a, Expression b)
@@ -162,13 +165,13 @@ namespace IQToolkit
 
         protected virtual bool CompareConstant(ConstantExpression a, ConstantExpression b)
         {
-            if (this.exactMatch)
+            if (this.fnCompare != null)
             {
-                return object.Equals(a.Value, b.Value);
+                return this.fnCompare(a.Value, b.Value);
             }
             else
             {
-                return a.Type == b.Type;
+                return object.Equals(a.Value, b.Value);
             }
         }
 

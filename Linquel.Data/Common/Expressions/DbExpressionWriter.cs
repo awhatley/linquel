@@ -166,9 +166,9 @@ namespace IQToolkit.Data.Common
         {
             if (this.language != null)
             {
-                return this.language.Format(query);
+                //return this.language.Format(query);
             }
-            return SqlFormatter.Format(query);
+            return SqlFormatter.Format(query, true);
         }
 
         protected virtual Expression VisitBatch(BatchExpression batch)
@@ -238,7 +238,7 @@ namespace IQToolkit.Data.Common
             string aliasName = 
                 this.aliasMap.TryGetValue(column.Alias, out iAlias)
                 ? "A" + iAlias
-                : "A?";
+                : "A" + (column.Alias != null ? column.Alias.GetHashCode().ToString() : "") + "?";
 
             this.Write(aliasName);
             this.Write(".");

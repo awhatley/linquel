@@ -94,7 +94,7 @@ namespace IQToolkit.Data.Common
                     Expression expr = this.Visit(decl.Expression);
                     if (expr != decl.Expression)
                     {
-                        decl = new ColumnDeclaration(decl.Name, expr);
+                        decl = new ColumnDeclaration(decl.Name, expr, decl.QueryType);
                     }
                 }
                 else

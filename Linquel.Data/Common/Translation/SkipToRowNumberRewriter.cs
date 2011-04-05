@@ -15,13 +15,16 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class SkipToRowNumberRewriter : DbExpressionVisitor
     {
-        private SkipToRowNumberRewriter()
+        QueryLanguage language;
+
+        private SkipToRowNumberRewriter(QueryLanguage language)
         {
+            this.language = language;
         }
 
-        public static Expression Rewrite(Expression expression)
+        public static Expression Rewrite(QueryLanguage language, Expression expression)
         {
-            return new SkipToRowNumberRewriter().Visit(expression);
+            return new SkipToRowNumberRewriter(language).Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -33,16 +36,17 @@ namespace IQToolkit.Data.Common
                 bool canAddColumn = !select.IsDistinct && (select.GroupBy == null || select.GroupBy.Count == 0);
                 if (!canAddColumn)
                 {
-                    newSelect = newSelect.AddRedundantSelect(new TableAlias());
+                    newSelect = newSelect.AddRedundantSelect(this.language, new TableAlias());
                 }
-                newSelect = newSelect.AddColumn(new ColumnDeclaration("rownum", new RowNumberExpression(select.OrderBy)));
+                var colType = this.language.TypeSystem.GetColumnType(typeof(int));
+                newSelect = newSelect.AddColumn(new ColumnDeclaration("_rownum", new RowNumberExpression(select.OrderBy), colType));
 
                 // add layer for WHERE clause that references new rownum column
-                newSelect = newSelect.AddRedundantSelect(new TableAlias());
-                newSelect = newSelect.RemoveColumn(newSelect.Columns.Single(c => c.Name == "rownum"));
+                newSelect = newSelect.AddRedundantSelect(this.language, new TableAlias());
+                newSelect = newSelect.RemoveColumn(newSelect.Columns.Single(c => c.Name == "_rownum"));
 
                 var newAlias = ((SelectExpression)newSelect.From).Alias;
-                ColumnExpression rnCol = new ColumnExpression(typeof(int), null, newAlias, "rownum");
+                ColumnExpression rnCol = new ColumnExpression(typeof(int), colType, newAlias, "_rownum");
                 Expression where;
                 if (select.Take != null)
                 {

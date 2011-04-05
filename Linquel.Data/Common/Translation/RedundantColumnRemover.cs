@@ -51,7 +51,7 @@ namespace IQToolkit.Data.Common
             {
                 ColumnDeclaration ci = cols[i];
                 ColumnExpression cix = ci.Expression as ColumnExpression;
-                QueryType qt = cix != null ? cix.QueryType : null;
+                QueryType qt = cix != null ? cix.QueryType : ci.QueryType;
                 ColumnExpression cxi = new ColumnExpression(ci.Expression.Type, qt, select.Alias, ci.Name);
                 for (int j = i + 1; j < n; j++)
                 {

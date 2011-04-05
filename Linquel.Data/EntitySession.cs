@@ -15,71 +15,268 @@ namespace IQToolkit.Data
 {
     using Common;
 
-    public class DbEntitySession : DbEntitySessionBase
+    public class EntitySession : IEntitySession
     {
-        public DbEntitySession(DbEntityProviderBase provider)
-            : base(provider)
+        EntityProvider provider;
+        SessionProvider sessionProvider;
+        Dictionary<MappingEntity, ISessionTable> tables;
+
+        public EntitySession(EntityProvider provider)
         {
+            this.provider = provider;
+            this.sessionProvider = new SessionProvider(this, provider);
+            this.tables = new Dictionary<MappingEntity, ISessionTable>();
         }
 
-        public override void SubmitChanges()
+        public IEntityProvider Provider
         {
-            bool opened = false;
-            if (this.Provider.Connection.State == System.Data.ConnectionState.Closed)
+            get { return this.sessionProvider; }
+        }
+
+        IEntityProvider IEntitySession.Provider
+        {
+            get { return this.Provider; }
+        }
+
+        protected IEnumerable<ISessionTable> GetTables()
+        {
+            return this.tables.Values;
+        }
+
+        public ISessionTable GetTable(Type elementType, string tableId)
+        {
+            return this.GetTable(this.sessionProvider.Provider.Mapping.GetEntity(elementType, tableId));
+        }
+
+        public ISessionTable<T> GetTable<T>(string tableId)
+        {
+            return (ISessionTable<T>)this.GetTable(typeof(T), tableId);
+        }
+
+        protected ISessionTable GetTable(MappingEntity entity)
+        {
+            ISessionTable table;
+            if (!this.tables.TryGetValue(entity, out table))
             {
-                this.Provider.Connection.Open();
-                opened = true;
+                table = this.CreateTable(entity);
+                this.tables.Add(entity, table);
             }
-            try
+            return table;
+        }
+
+        private object OnEntityMaterialized(MappingEntity entity, object instance)
+        {
+            IEntitySessionTable table = (IEntitySessionTable)this.GetTable(entity);
+            return table.OnEntityMaterialized(instance);
+        }
+
+        interface IEntitySessionTable : ISessionTable
+        {
+            object OnEntityMaterialized(object instance);
+            MappingEntity Entity { get; }
+        }
+
+        abstract class SessionTable<T> : Query<T>, ISessionTable<T>, ISessionTable, IEntitySessionTable
+        {
+            EntitySession session;
+            MappingEntity entity;
+            IEntityTable<T> underlyingTable;
+
+            public SessionTable(EntitySession session, MappingEntity entity)
+                : base(session.sessionProvider, typeof(ISessionTable<T>))
             {
-                if (this.Provider.Transaction == null)
+                this.session = session;
+                this.entity = entity;
+                this.underlyingTable = this.session.Provider.GetTable<T>(entity.TableId);
+            }
+
+            public IEntitySession Session
+            {
+                get { return this.session; }
+            }
+
+            public MappingEntity Entity 
+            {
+                get { return this.entity; }
+            }
+
+            public IEntityTable<T> ProviderTable
+            {
+                get { return this.underlyingTable; }
+            }
+
+            IEntityTable ISessionTable.ProviderTable
+            {
+                get { return this.underlyingTable; }
+            }
+
+            public T GetById(object id)
+            {
+                return this.underlyingTable.GetById(id);
+            }
+
+            object ISessionTable.GetById(object id)
+            {
+                return this.GetById(id);
+            }
+
+            public virtual object OnEntityMaterialized(object instance)
+            {
+                return instance;
+            }
+
+            public virtual void SetSubmitAction(T instance, SubmitAction action)
+            {
+                throw new NotImplementedException();
+            }
+
+            void ISessionTable.SetSubmitAction(object instance, SubmitAction action)
+            {
+                this.SetSubmitAction((T)instance, action);
+            }
+
+            public virtual SubmitAction GetSubmitAction(T instance)
+            {
+                throw new NotImplementedException();
+            }
+
+            SubmitAction ISessionTable.GetSubmitAction(object instance)
+            {
+                return this.GetSubmitAction((T)instance);
+            }
+        }
+
+        class SessionProvider : QueryProvider, IEntityProvider, ICreateExecutor
+        {
+            EntitySession session;
+            EntityProvider provider;
+
+            public SessionProvider(EntitySession session, EntityProvider provider)
+            {
+                this.session = session;
+                this.provider = provider;
+            }
+
+            public EntityProvider Provider
+            {
+                get { return this.provider; }
+            }
+
+            public override object Execute(Expression expression)
+            {
+                return this.provider.Execute(expression);
+            }
+
+            public override string GetQueryText(Expression expression)
+            {
+                return this.provider.GetQueryText(expression);
+            }
+
+            public IEntityTable<T> GetTable<T>(string tableId)
+            {
+                return this.provider.GetTable<T>(tableId);
+            }
+
+            public IEntityTable GetTable(Type type, string tableId)
+            {
+                return this.provider.GetTable(type, tableId);
+            }
+
+            public bool CanBeEvaluatedLocally(Expression expression)
+            {
+                return this.provider.Mapping.CanBeEvaluatedLocally(expression);
+            }
+
+            public bool CanBeParameter(Expression expression)
+            {
+                return this.provider.CanBeParameter(expression);
+            }
+
+            QueryExecutor ICreateExecutor.CreateExecutor()
+            {
+                return new SessionExecutor(this.session, ((ICreateExecutor)this.provider).CreateExecutor());
+            }
+        }
+
+        class SessionExecutor : QueryExecutor
+        {
+            EntitySession session;
+            QueryExecutor executor;
+
+            public SessionExecutor(EntitySession session, QueryExecutor executor)
+            {
+                this.session = session;
+                this.executor = executor;
+            }
+
+            public override int RowsAffected
+            {
+                get { return this.executor.RowsAffected; }
+            }
+
+            public override object Convert(object value, Type type)
+            {
+                return this.executor.Convert(value, type);
+            }
+
+            public override IEnumerable<T> Execute<T>(QueryCommand command, Func<FieldReader, T> fnProjector, MappingEntity entity, object[] paramValues)
+            {
+                return this.executor.Execute<T>(command, Wrap(fnProjector, entity), entity, paramValues);
+            }
+
+            public override IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream)
+            {
+                return this.executor.ExecuteBatch(query, paramSets, batchSize, stream);
+            }
+
+            public override IEnumerable<T> ExecuteBatch<T>(QueryCommand query, IEnumerable<object[]> paramSets, Func<FieldReader, T> fnProjector, MappingEntity entity, int batchSize, bool stream)
+            {
+                return this.executor.ExecuteBatch<T>(query, paramSets, Wrap(fnProjector, entity), entity, batchSize, stream);
+            }
+
+            public override IEnumerable<T> ExecuteDeferred<T>(QueryCommand query, Func<FieldReader, T> fnProjector, MappingEntity entity, object[] paramValues)
+            {
+                return this.executor.ExecuteDeferred<T>(query, Wrap(fnProjector, entity), entity, paramValues);
+            }
+
+            public override int ExecuteCommand(QueryCommand query, object[] paramValues)
+            {
+                return this.executor.ExecuteCommand(query, paramValues);
+            }
+
+            private Func<FieldReader, T> Wrap<T>(Func<FieldReader, T> fnProjector, MappingEntity entity)
+            {
+                Func<FieldReader, T> fnWrapped = (fr) => (T)this.session.OnEntityMaterialized(entity, fnProjector(fr));
+                return fnWrapped;
+            }
+        }
+
+        public virtual void SubmitChanges()
+        {
+            this.provider.DoTransacted(
+                delegate
                 {
-                    var trans = this.Provider.Connection.BeginTransaction();
-                    try
+                    var submitted = new List<TrackedItem>();
+
+                    // do all submit actions
+                    foreach (var item in this.GetOrderedItems())
                     {
-                        this.Provider.Transaction = trans;
-                        this.DoSubmit();
-                        trans.Commit();
+                        if (item.Table.SubmitChanges(item))
+                        {
+                            submitted.Add(item);
+                        }
                     }
-                    finally
+
+                    // on completion, accept changes
+                    foreach (var item in submitted)
                     {
-                        this.Provider.Transaction = null;
-                        trans.Dispose();
+                        item.Table.AcceptChanges(item);
                     }
                 }
-                else
-                {
-                    this.DoSubmit();
-                }
-            }
-            finally
-            {
-                if (opened)
-                    this.Provider.Connection.Close();
-            }
+            );
         }
 
-        private void DoSubmit()
-        {
-            var submitted = new List<TrackedItem>();
-
-            // do all submit actions
-            foreach (var item in this.GetOrderedItems())
-            {
-                if (item.Table.SubmitChanges(item))
-                {
-                    submitted.Add(item);
-                }
-            }
-
-            // on completion, accept changes
-            foreach (var item in submitted)
-            {
-                item.Table.AcceptChanges(item);
-            }
-        }
-
-        protected override ISessionTable CreateTable(MappingEntity entity)
+        protected virtual ISessionTable CreateTable(MappingEntity entity)
         {
             return (ISessionTable)Activator.CreateInstance(typeof(TrackedTable<>).MakeGenericType(entity.ElementType), new object[] { this, entity });
         }
@@ -98,7 +295,7 @@ namespace IQToolkit.Data
             Dictionary<T, TrackedItem> tracked;
             Dictionary<object, T> identityCache;
 
-            public TrackedTable(DbEntitySession session, MappingEntity entity)
+            public TrackedTable(EntitySession session, MappingEntity entity)
                 : base(session, entity)
             {
                 this.tracked = new Dictionary<T, TrackedItem>();
@@ -140,7 +337,7 @@ namespace IQToolkit.Data
                         return true;
                     case SubmitAction.PossibleUpdate:
                         if (item.Original != null &&
-                            ((DbEntityProviderBase)this.Provider).Mapping.IsModified(item.Entity, item.Instance, item.Original))
+                            this.Mapping.IsModified(item.Entity, item.Instance, item.Original))
                         {
                             this.ProviderTable.Update(item.Instance);
                             return true;
@@ -208,7 +405,7 @@ namespace IQToolkit.Data
                 {
                     if (ti.State == SubmitAction.PossibleUpdate)
                     {
-                        if (((DbEntityProviderBase)this.Provider).Mapping.IsModified(ti.Entity, ti.Instance, ti.Original))
+                        if (this.Mapping.IsModified(ti.Entity, ti.Instance, ti.Original))
                         {
                             return SubmitAction.Update;
                         }
@@ -240,9 +437,14 @@ namespace IQToolkit.Data
                 this.AssignAction(instance, action);
             }
 
+            private QueryMapping Mapping
+            {
+                get { return ((EntitySession)this.Session).provider.Mapping; }
+            }
+
             private T AddToCache(T instance)
             {
-                object key = ((DbEntityProviderBase)this.Provider).Mapping.GetPrimaryKey(this.Entity, instance);
+                object key = this.Mapping.GetPrimaryKey(this.Entity, instance);
                 T cached;
                 if (!this.identityCache.TryGetValue(key, out cached))
                 {
@@ -254,7 +456,7 @@ namespace IQToolkit.Data
 
             private void RemoveFromCache(T instance)
             {
-                object key = ((DbEntityProviderBase)this.Provider).Mapping.GetPrimaryKey(this.Entity, instance);
+                object key = this.Mapping.GetPrimaryKey(this.Entity, instance);
                 this.identityCache.Remove(key);
             }
 
@@ -284,7 +486,7 @@ namespace IQToolkit.Data
                         }
                         else
                         {
-                            var original = ((DbEntityProviderBase)(this.Provider)).Mapping.CloneEntity(this.Entity, instance);
+                            var original = this.Mapping.CloneEntity(this.Entity, instance);
                             this.tracked[instance] = new TrackedItem(this, instance, original, SubmitAction.PossibleUpdate, false);
                         }
                         break;
@@ -298,7 +500,7 @@ namespace IQToolkit.Data
                 TrackedItem ti;
                 if (this.tracked.TryGetValue((T)sender, out ti) && ti.State == SubmitAction.PossibleUpdate)
                 {
-                    object clone = ((DbEntityProviderBase)this.Provider).Mapping.CloneEntity(ti.Entity, ti.Instance);
+                    object clone = this.Mapping.CloneEntity(ti.Entity, ti.Instance);
                     this.tracked[(T)sender] = new TrackedItem(this, ti.Instance, clone, SubmitAction.Update, true);
                 }
             }
@@ -376,7 +578,7 @@ namespace IQToolkit.Data
                         var beforeMe = stLookup[item];
 
                         // if another object exists with same key that is being deleted, then the delete must come before the insert
-                        object cached = item.Table.GetFromCacheById(this.Provider.Mapping.GetPrimaryKey(item.Entity, item.Instance));
+                        object cached = item.Table.GetFromCacheById(this.provider.Mapping.GetPrimaryKey(item.Entity, item.Instance));
                         if (cached != null && cached != item.Instance)
                         {
                             var ti = item.Table.GetTrackedItem(cached);
@@ -406,7 +608,7 @@ namespace IQToolkit.Data
         {
             foreach (var c in items)
             {
-                foreach (var d in this.Provider.Mapping.GetDependingEntities(c.Entity, c.Instance))
+                foreach (var d in this.provider.Mapping.GetDependingEntities(c.Entity, c.Instance))
                 {
                     var dc = this.GetTrackedItem(d);
                     if (dc != null)
@@ -414,7 +616,7 @@ namespace IQToolkit.Data
                         yield return new Edge(dc, c);
                     }
                 }
-                foreach (var d in this.Provider.Mapping.GetDependentEntities(c.Entity, c.Instance))
+                foreach (var d in this.provider.Mapping.GetDependentEntities(c.Entity, c.Instance))
                 {
                     var dc = this.GetTrackedItem(d);
                     if (dc != null)

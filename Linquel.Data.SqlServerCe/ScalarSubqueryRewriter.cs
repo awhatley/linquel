@@ -17,11 +17,17 @@ namespace IQToolkit.Data.SqlServerCe
     /// </summary>
     public class ScalarSubqueryRewriter : DbExpressionVisitor
     {
+        QueryLanguage language;
         Expression currentFrom;
 
-        public static Expression Rewrite(Expression expression)
+        public ScalarSubqueryRewriter(QueryLanguage language)
         {
-            return new ScalarSubqueryRewriter().Visit(expression);
+            this.language = language;
+        }
+
+        public static Expression Rewrite(QueryLanguage language, Expression expression)
+        {
+            return new ScalarSubqueryRewriter(language).Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -47,13 +53,14 @@ namespace IQToolkit.Data.SqlServerCe
         protected override Expression VisitScalar(ScalarExpression scalar)
         {
             var select = scalar.Select;
+            var colType = this.language.TypeSystem.GetColumnType(scalar.Type);
             if (string.IsNullOrEmpty(select.Columns[0].Name))
             {
                 var name = select.Columns.GetAvailableColumnName("scalar");
-                select = select.SetColumns(new[] { new ColumnDeclaration(name, select.Columns[0].Expression) });
+                select = select.SetColumns(new[] { new ColumnDeclaration(name, select.Columns[0].Expression, colType) });
             }
             this.currentFrom = new JoinExpression(JoinType.OuterApply, this.currentFrom, select, null);
-            return new ColumnExpression(scalar.Type, null, scalar.Select.Alias, select.Columns[0].Name);
+            return new ColumnExpression(scalar.Type, colType, scalar.Select.Alias, select.Columns[0].Name);
         }
     }
 }

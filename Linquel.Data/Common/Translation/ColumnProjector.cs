@@ -43,6 +43,7 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class ColumnProjector : DbExpressionVisitor
     {
+        QueryLanguage language;
         Dictionary<ColumnExpression, ColumnExpression> map;
         List<ColumnDeclaration> columns;
         HashSet<string> columnNames;
@@ -53,6 +54,7 @@ namespace IQToolkit.Data.Common
 
         private ColumnProjector(QueryLanguage language, Expression expression, IEnumerable<ColumnDeclaration> existingColumns, TableAlias newAlias, IEnumerable<TableAlias> existingAliases)
         {
+            this.language = language;
             this.newAlias = newAlias;
             this.existingAliases = new HashSet<TableAlias>(existingAliases);
             this.map = new Dictionary<ColumnExpression, ColumnExpression>();
@@ -107,7 +109,7 @@ namespace IQToolkit.Data.Common
                     {
                         int ordinal = this.columns.Count;
                         string columnName = this.GetUniqueColumnName(column.Name);
-                        this.columns.Add(new ColumnDeclaration(columnName, column));
+                        this.columns.Add(new ColumnDeclaration(columnName, column, column.QueryType));
                         mapped = new ColumnExpression(column.Type, column.QueryType, this.newAlias, columnName);
                         this.map.Add(column, mapped);
                         this.columnNames.Add(columnName);
@@ -119,8 +121,9 @@ namespace IQToolkit.Data.Common
                 else
                 {
                     string columnName = this.GetNextColumnName();
-                    this.columns.Add(new ColumnDeclaration(columnName, expression));
-                    return new ColumnExpression(expression.Type, null, this.newAlias, columnName);
+                    var colType = this.language.TypeSystem.GetColumnType(expression.Type);
+                    this.columns.Add(new ColumnDeclaration(columnName, expression, colType));
+                    return new ColumnExpression(expression.Type, colType, this.newAlias, columnName);
                 }
             }
             else
@@ -203,6 +206,12 @@ namespace IQToolkit.Data.Common
                     }
                 }
                 return expression;
+            }
+
+            protected override Expression VisitProjection(ProjectionExpression proj)
+            {
+                this.Visit(proj.Projector);
+                return proj;
             }
         }
     }

@@ -18,22 +18,15 @@ namespace Test
     using IQToolkit.Data;
     using IQToolkit.Data.Mapping;
 
-    [DataContract]
     public class Customer
     {
-        [DataMember]
         public string CustomerID;
-        [DataMember]
         public string ContactName;
-        [DataMember]
         public string CompanyName;
-        [DataMember]
         public string Phone;
-        [DataMember]
         public string City;
-        [DataMember]
         public string Country;
-        public List<Order> Orders;
+        public IList<Order> Orders;
     }
 
     public class Order
@@ -168,7 +161,7 @@ namespace Test
         [Table(Name = "Order Details")]
         [Column(Member = "OrderID", IsPrimaryKey = true)]
         [Column(Member = "ProductID", IsPrimaryKey = true)]
-        [Association(Member = "Product", KeyMembers = "ProductID", RelatedEntityID = "Products", RelatedKeyMembers = "ProductID")]
+        [Association(Member = "Product", KeyMembers = "ProductID", RelatedEntityID = "Products", RelatedKeyMembers = "ID")]
         public override IEntityTable<OrderDetail> OrderDetails
         {
             get { return base.OrderDetails; }
@@ -224,8 +217,8 @@ namespace Test
     {
         IEntitySession session;
 
-        public NorthwindSession(DbEntityProvider provider)
-            : this(new DbEntitySession(provider))
+        public NorthwindSession(EntityProvider provider)
+            : this(new EntitySession(provider))
         {
         }
 
@@ -257,6 +250,78 @@ namespace Test
         public ISessionTable<OrderDetail> OrderDetails
         {
             get { return this.session.GetTable<OrderDetail>("OrderDetails"); }
+        }
+    }
+
+
+    public class CustomerX
+    {
+        public CustomerX(string customerId, string contactName, string companyName, string phone, string city, string country, List<OrderX> orders)
+        {
+            this.CustomerID = customerId;
+            this.ContactName = contactName;
+            this.CompanyName = companyName;
+            this.Phone = phone;
+            this.City = city;
+            this.Country = country;
+            this.Orders = orders;
+        }
+
+        public string CustomerID { get; private set; }
+        public string ContactName { get; private set; }
+        public string CompanyName { get; private set; }
+        public string Phone { get; private set; }
+        public string City { get; private set; }
+        public string Country { get; private set; }
+        public List<OrderX> Orders { get; private set; }
+    }
+
+    public class OrderX
+    {
+        public OrderX(int orderID, string customerID, DateTime orderDate, CustomerX customer)
+        {
+            this.OrderID = orderID;
+            this.CustomerID = customerID;
+            this.OrderDate = orderDate;
+            this.Customer = customer;
+        }
+
+        public int OrderID { get; private set; }
+        public string CustomerID { get; private set; }
+        public DateTime OrderDate { get; private set; }
+        public CustomerX Customer { get; private set; }
+    }
+
+    public class NorthwindX
+    {
+        EntityProvider provider;
+
+        public NorthwindX(EntityProvider provider)
+        {
+            this.provider = provider;
+        }
+
+        [Table]
+        [Column(Member = "CustomerId", IsPrimaryKey = true)]
+        [Column(Member = "ContactName")]
+        [Column(Member = "CompanyName")]
+        [Column(Member = "Phone")]
+        [Column(Member = "City", DbType = "NVARCHAR(20)")]
+        [Column(Member = "Country")]
+        [Association(Member = "Orders", KeyMembers = "CustomerID", RelatedEntityID = "Orders", RelatedKeyMembers = "CustomerID")]
+        public IQueryable<CustomerX> Customers
+        {
+            get { return this.provider.GetTable<CustomerX>("Customers"); }
+        }
+
+        [Table]
+        [Column(Member = "OrderID", IsPrimaryKey = true, IsGenerated = true)]
+        [Column(Member = "CustomerID")]
+        [Column(Member = "OrderDate")]
+        [Association(Member = "Customer", KeyMembers = "CustomerID", RelatedEntityID = "Customers", RelatedKeyMembers = "CustomerID")]
+        public IEntityTable<OrderX> Orders
+        {
+            get { return this.provider.GetTable<OrderX>("Orders"); }
         }
     }
 }

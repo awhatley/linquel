@@ -22,15 +22,15 @@ namespace IQToolkit.Data.Mapping
         private static readonly XName Entity = XName.Get("Entity");
         private static readonly XName Id = XName.Get("Id");
         
-        public XmlMapping(QueryLanguage language, XElement root)
-            : base(language, null)
+        public XmlMapping(XElement root)
+            : base(null)
         {
             this.entities = root.Elements().Where(e => e.Name == Entity).ToDictionary(e => (string)e.Attribute(Id));
         }
 
-        public static XmlMapping FromXml(QueryLanguage language, string xml)
+        public static XmlMapping FromXml(string xml)
         {
-            return new XmlMapping(language, XElement.Parse(xml));
+            return new XmlMapping(XElement.Parse(xml));
         }
 
         protected override IEnumerable<MappingAttribute> GetMappingAttributes(string rootEntityId)       

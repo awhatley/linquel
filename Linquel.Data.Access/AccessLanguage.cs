@@ -45,27 +45,39 @@ namespace IQToolkit.Data.Access
             return new FunctionExpression(TypeHelper.GetMemberType(member), "@@IDENTITY", null);
         }
 
-        public override Expression Translate(Expression expression)
+        public override QueryLinguist CreateLinguist(QueryTranslator translator)
         {
-            // fix up any order-by's
-            expression = OrderByRewriter.Rewrite(expression);
-
-            expression = base.Translate(expression);
-
-            expression = CrossJoinIsolator.Isolate(expression);
-            expression = SkipToNestedOrderByRewriter.Rewrite(expression);
-            expression = OrderByRewriter.Rewrite(expression);
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-
-            return expression;
+            return new AccessLinguist(this, translator);
         }
 
-        public override string Format(Expression expression)
+        class AccessLinguist : QueryLinguist
         {
-            return AccessFormatter.Format(expression);
-        }
+            public AccessLinguist(AccessLanguage language, QueryTranslator translator)
+                : base(language, translator)
+            {
+            }
 
+            public override Expression Translate(Expression expression)
+            {
+                // fix up any order-by's
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+
+                expression = base.Translate(expression);
+
+                expression = CrossJoinIsolator.Isolate(expression);
+                expression = SkipToNestedOrderByRewriter.Rewrite(this.Language, expression);
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+                expression = UnusedColumnRemover.Remove(expression);
+                expression = RedundantSubqueryRemover.Remove(expression);
+
+                return expression;
+            }
+
+            public override string Format(Expression expression)
+            {
+                return AccessFormatter.Format(expression);
+            }
+        }
 
         private static AccessLanguage _default;
 

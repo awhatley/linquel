@@ -9,6 +9,7 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 
 namespace IQToolkit.Data.Mapping
 {
@@ -19,8 +20,7 @@ namespace IQToolkit.Data.Mapping
     /// </summary>
     public class ImplicitMapping : BasicMapping
     {
-        public ImplicitMapping(QueryLanguage language)
-            : base(language)
+        public ImplicitMapping()
         {
         }
 
@@ -54,17 +54,41 @@ namespace IQToolkit.Data.Mapping
             return name;
         }
 
-        protected override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
+        public override bool IsColumn(MappingEntity entity, MemberInfo member)
+        {
+            return IsScalar(TypeHelper.GetMemberType(member));
+        }
+
+        private bool IsScalar(Type type)
+        {
+            type = TypeHelper.GetNonNullableType(type);
+            switch (Type.GetTypeCode(type))
+            {
+                case TypeCode.Empty:
+                case TypeCode.DBNull:
+                    return false;
+                case TypeCode.Object:
+                    return
+                        type == typeof(DateTimeOffset) ||
+                        type == typeof(TimeSpan) ||
+                        type == typeof(Guid) ||
+                        type == typeof(byte[]);
+                default:
+                    return true;
+            }
+        }
+
+        public override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
         {
             if (IsMapped(entity, member) && !IsColumn(entity, member))
             {
                 Type otherType = TypeHelper.GetElementType(TypeHelper.GetMemberType(member));
-                return !this.Language.IsScalar(otherType);
+                return !this.IsScalar(otherType);
             }
             return false;
         }
 
-        protected override bool IsRelationshipSource(MappingEntity entity, MemberInfo member)
+        public override bool IsRelationshipSource(MappingEntity entity, MemberInfo member)
         {
             if (IsAssociationRelationship(entity, member))
             {
@@ -80,7 +104,7 @@ namespace IQToolkit.Data.Mapping
             return false;
         }
 
-        protected override bool IsRelationshipTarget(MappingEntity entity, MemberInfo member)
+        public override bool IsRelationshipTarget(MappingEntity entity, MemberInfo member)
         {
             if (IsAssociationRelationship(entity, member))
             {
@@ -95,7 +119,7 @@ namespace IQToolkit.Data.Mapping
             return false;
         }
 
-        protected override IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
+        public override IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
         {
             List<MemberInfo> keyMembers;
             List<MemberInfo> relatedKeyMembers;
@@ -103,7 +127,7 @@ namespace IQToolkit.Data.Mapping
             return keyMembers;
         }
 
-        protected override IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
+        public override IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
         {
             List<MemberInfo> keyMembers;
             List<MemberInfo> relatedKeyMembers;
@@ -128,7 +152,7 @@ namespace IQToolkit.Data.Mapping
             }
         }
 
-        protected override string GetTableName(MappingEntity entity)
+        public override string GetTableName(MappingEntity entity)
         {
             return !string.IsNullOrEmpty(entity.TableId) ? entity.TableId : this.InferTableName(entity.EntityType);
         }

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -53,12 +52,6 @@ namespace IQToolkit.Data.Common
     public abstract class QueryMapping
     {
         /// <summary>
-        /// The language related to the mapping
-        /// </summary>
-        public abstract QueryLanguage Language { get; }
-
-
-        /// <summary>
         /// Determines the entity Id based on the type of the entity alone
         /// </summary>
         /// <param name="type"></param>
@@ -103,16 +96,6 @@ namespace IQToolkit.Data.Common
             return this.GetMappedMembers(entity).Where(m => this.IsPrimaryKey(entity, m));
         }
 
-        public abstract object CloneEntity(MappingEntity entity, object instance);
-        public abstract bool IsModified(MappingEntity entity, object instance, object original);
-
-        public abstract Expression GetPrimaryKeyQuery(MappingEntity entity, Expression source, Expression[] keys);
-        public abstract object GetPrimaryKey(MappingEntity entity, object instance);
-
-        public abstract IEnumerable<EntityInfo> GetDependentEntities(MappingEntity entity, object instance);
-        public abstract IEnumerable<EntityInfo> GetDependingEntities(MappingEntity entity, object instance);
-
-
         /// <summary>
         /// Determines if a property is mapped as a relationship
         /// </summary>
@@ -133,6 +116,53 @@ namespace IQToolkit.Data.Common
             Type ieType = TypeHelper.FindIEnumerable(TypeHelper.GetMemberType(member));
             return ieType == null;
         }
+
+        /// <summary>
+        /// Determines whether a given expression can be executed locally. 
+        /// (It contains no parts that should be translated to the target environment.)
+        /// </summary>
+        /// <param name="expression"></param>
+        /// <returns></returns>
+        public virtual bool CanBeEvaluatedLocally(Expression expression)
+        {
+            // any operation on a query can't be done locally
+            ConstantExpression cex = expression as ConstantExpression;
+            if (cex != null)
+            {
+                IQueryable query = cex.Value as IQueryable;
+                if (query != null && query.Provider == this)
+                    return false;
+            }
+            MethodCallExpression mc = expression as MethodCallExpression;
+            if (mc != null &&
+                (mc.Method.DeclaringType == typeof(Enumerable) ||
+                 mc.Method.DeclaringType == typeof(Queryable) ||
+                 mc.Method.DeclaringType == typeof(Updatable))
+                 )
+            {
+                return false;
+            }
+            if (expression.NodeType == ExpressionType.Convert &&
+                expression.Type == typeof(object))
+                return true;
+            return expression.NodeType != ExpressionType.Parameter &&
+                   expression.NodeType != ExpressionType.Lambda;
+        }
+
+        public abstract object GetPrimaryKey(MappingEntity entity, object instance);
+        public abstract Expression GetPrimaryKeyQuery(MappingEntity entity, Expression source, Expression[] keys);
+        public abstract IEnumerable<EntityInfo> GetDependentEntities(MappingEntity entity, object instance);
+        public abstract IEnumerable<EntityInfo> GetDependingEntities(MappingEntity entity, object instance);
+        public abstract object CloneEntity(MappingEntity entity, object instance);
+        public abstract bool IsModified(MappingEntity entity, object instance, object original);
+
+        public abstract QueryMapper CreateMapper(QueryTranslator translator);
+    }
+
+    public abstract class QueryMapper
+    {
+        public abstract QueryMapping Mapping { get; }
+        public abstract QueryTranslator Translator { get; }
 
         /// <summary>
         /// Get a query expression that selects all entities from a table
@@ -208,6 +238,20 @@ namespace IQToolkit.Data.Common
         /// <returns></returns>
         public abstract EntityExpression IncludeMembers(EntityExpression entity, Func<MemberInfo, bool> fnIsIncluded);
 
+        /// <summary>
+        /// </summary>
+        /// <returns></returns>
+        public abstract bool HasIncludedMembers(EntityExpression entity);
+
+        /// <summary>
+        /// Apply mapping to a sub query expression
+        /// </summary>
+        /// <param name="expression"></param>
+        /// <returns></returns>
+        public virtual Expression ApplyMapping(Expression expression)
+        {
+            return QueryBinder.Bind(this, expression);
+        }
 
         /// <summary>
         /// Apply mapping translations to this expression
@@ -216,8 +260,11 @@ namespace IQToolkit.Data.Common
         /// <returns></returns>
         public virtual Expression Translate(Expression expression)
         {
+            // convert references to LINQ operators into query specific nodes
+            expression = QueryBinder.Bind(this, expression);
+
             // move aggregate computations so they occur in same select as group-by
-            expression = AggregateRewriter.Rewrite(expression);
+            expression = AggregateRewriter.Rewrite(this.Translator.Linguist.Language, expression);
 
             // do reduction so duplicate association's are likely to be clumped together
             expression = UnusedColumnRemover.Remove(expression);
@@ -226,14 +273,17 @@ namespace IQToolkit.Data.Common
             expression = RedundantJoinRemover.Remove(expression);
 
             // convert references to association properties into correlated queries
-            expression = RelationshipBinder.Bind(this, expression);
-
-            // clean up after ourselves! (multiple references to same association property)
-            expression = RedundantColumnRemover.Remove(expression);
-            expression = RedundantJoinRemover.Remove(expression);
+            var bound = RelationshipBinder.Bind(this, expression);
+            if (bound != expression)
+            {
+                expression = bound;
+                // clean up after ourselves! (multiple references to same association property)
+                expression = RedundantColumnRemover.Remove(expression);
+                expression = RedundantJoinRemover.Remove(expression);
+            }
 
             // rewrite comparision checks between entities and multi-valued constructs
-            expression = ComparisonRewriter.Rewrite(this, expression);
+            expression = ComparisonRewriter.Rewrite(this.Mapping, expression);
 
             return expression;
         }

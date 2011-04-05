@@ -42,8 +42,6 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Common\DbEntityProviderBase.cs" />
-    <Compile Include="Common\DbEntitySessionBase.cs" />
     <Compile Include="Common\ExecutionBuilder.cs" />
     <Compile Include="Common\Expressions\Aggregator.cs" />
     <Compile Include="Common\Expressions\DbExpressionComparer.cs" />
@@ -56,12 +54,13 @@
     <Compile Include="Common\Language\QueryLanguage.cs" />
     <Compile Include="Common\Language\QueryTypeSystem.cs" />
     <Compile Include="Common\Language\SqlFormatter.cs" />
-    <Compile Include="Common\Language\TSqlTypeSystem.cs" />
     <Compile Include="Common\Mapping\AdvancedMapping.cs" />
     <Compile Include="Common\Mapping\BasicMapping.cs" />
     <Compile Include="Common\Mapping\QueryMapping.cs" />
     <Compile Include="Common\QueryCommand.cs" />
+    <Compile Include="Common\QueryExecutor.cs" />
     <Compile Include="Common\QueryPolicy.cs" />
+    <Compile Include="Common\QueryTranslator.cs" />
     <Compile Include="Common\Translation\AggregateChecker.cs" />
     <Compile Include="Common\Translation\AggregateRewriter.cs" />
     <Compile Include="Common\Translation\ClientJoinedProjectionRewriter.cs" />
@@ -91,7 +90,10 @@
     <Compile Include="Common\Translation\SubqueryRemover.cs" />
     <Compile Include="Common\Translation\UnusedColumnRemover.cs" />
     <Compile Include="DbEntityProvider.cs" />
-    <Compile Include="DbEntitySession.cs" />
+    <Compile Include="DbTypeSystem.cs" />
+    <Compile Include="EntityPolicy.cs" />
+    <Compile Include="EntityProvider.cs" />
+    <Compile Include="EntitySession.cs" />
     <Compile Include="Mapping\AttributeMapping.cs" />
     <Compile Include="Mapping\ImplicitMapping.cs" />
     <Compile Include="Mapping\XmlMapping.cs" />

@@ -17,17 +17,21 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class RelationshipBinder : DbExpressionVisitor
     {
+        QueryMapper mapper;
         QueryMapping mapping;
+        QueryLanguage language;
         Expression currentFrom;
 
-        private RelationshipBinder(QueryMapping mapping)
+        private RelationshipBinder(QueryMapper mapper)
         {
-            this.mapping = mapping;
+            this.mapper = mapper;
+            this.mapping = mapper.Mapping;
+            this.language = mapper.Translator.Linguist.Language;
         }
 
-        public static Expression Bind(QueryMapping mapping, Expression expression)
+        public static Expression Bind(QueryMapper mapper, Expression expression)
         {
-            return new RelationshipBinder(mapping).Visit(expression);
+            return new RelationshipBinder(mapper).Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -68,11 +72,11 @@ namespace IQToolkit.Data.Common
 
             if (ex != null && this.mapping.IsRelationship(ex.Entity, m.Member))
             {
-                ProjectionExpression projection = (ProjectionExpression)this.Visit(this.mapping.GetMemberExpression(source, ex.Entity, m.Member));
+                ProjectionExpression projection = (ProjectionExpression)this.Visit(this.mapper.GetMemberExpression(source, ex.Entity, m.Member));
                 if (this.currentFrom != null && this.mapping.IsSingletonRelationship(ex.Entity, m.Member))
                 {
                     // convert singleton associations directly to OUTER APPLY
-                    projection = this.mapping.Language.AddOuterJoinTest(projection);
+                    projection = this.language.AddOuterJoinTest(projection);
                     Expression newFrom = new JoinExpression(JoinType.OuterApply, this.currentFrom, projection.Select, null);
                     this.currentFrom = newFrom;
                     return projection.Projector;

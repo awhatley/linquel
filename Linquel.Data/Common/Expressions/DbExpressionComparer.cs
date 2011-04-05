@@ -19,30 +19,33 @@ namespace IQToolkit.Data.Common
     {
         ScopedDictionary<TableAlias, TableAlias> aliasScope;
 
-        protected DbExpressionComparer(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, bool exactMatch)
-            : base(parameterScope, exactMatch)
+        protected DbExpressionComparer(
+            ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, 
+            Func<object, object, bool> fnCompare,
+            ScopedDictionary<TableAlias, TableAlias> aliasScope)
+            : base(parameterScope, fnCompare)
         {
             this.aliasScope = aliasScope;
         }
 
         public new static bool AreEqual(Expression a, Expression b)
         {
-            return AreEqual(null, null, a, b, true);
+            return AreEqual(null, null, a, b, null);
         }
 
-        public new static bool AreEqual(Expression a, Expression b, bool exactMatch)
+        public new static bool AreEqual(Expression a, Expression b, Func<object, object, bool> fnCompare)
         {
-            return AreEqual(null, null, a, b, exactMatch);
+            return AreEqual(null, null, a, b, fnCompare);
         }
 
         public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, Expression a, Expression b)
         {
-            return new DbExpressionComparer(parameterScope, aliasScope, true).Compare(a, b);
+            return new DbExpressionComparer(parameterScope, null, aliasScope).Compare(a, b);
         }
 
-        public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, Expression a, Expression b, bool exactMatch)
+        public static bool AreEqual(ScopedDictionary<ParameterExpression, ParameterExpression> parameterScope, ScopedDictionary<TableAlias, TableAlias> aliasScope, Expression a, Expression b, Func<object, object, bool> fnCompare)
         {
-            return new DbExpressionComparer(parameterScope, aliasScope, exactMatch).Compare(a, b);
+            return new DbExpressionComparer(parameterScope, fnCompare, aliasScope).Compare(a, b);
         }
 
         protected override bool Compare(Expression a, Expression b)

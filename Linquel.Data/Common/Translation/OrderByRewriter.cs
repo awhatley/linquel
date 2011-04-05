@@ -17,17 +17,19 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class OrderByRewriter : DbExpressionVisitor
     {
+        QueryLanguage language;
         IList<OrderExpression> gatheredOrderings;
         bool isOuterMostSelect;
 
-        private OrderByRewriter()
+        private OrderByRewriter(QueryLanguage language)
         {
+            this.language = language;
             this.isOuterMostSelect = true;
         }
 
-        public static Expression Rewrite(Expression expression)
+        public static Expression Rewrite(QueryLanguage language, Expression expression)
         {
-            return new OrderByRewriter().Visit(expression);
+            return new OrderByRewriter(language).Visit(expression);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -239,8 +241,9 @@ namespace IQToolkit.Data.Common
                         }
                         string colName = column != null ? column.Name : "c" + iOrdinal;
                         colName = newColumns.GetAvailableColumnName(colName);
-                        newColumns.Add(new ColumnDeclaration(colName, ordering.Expression));
-                        expr = new ColumnExpression(expr.Type, null, alias, colName);
+                        var colType = this.language.TypeSystem.GetColumnType(expr.Type);
+                        newColumns.Add(new ColumnDeclaration(colName, ordering.Expression, colType));
+                        expr = new ColumnExpression(expr.Type, colType, alias, colName);
                     }
                     newOrderings.Add(new OrderExpression(ordering.OrderType, expr));
                 }

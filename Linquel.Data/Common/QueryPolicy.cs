@@ -42,37 +42,80 @@ namespace IQToolkit.Data.Common
             return false;
         }
 
+        public virtual QueryPolice CreatePolice(QueryTranslator translator)
+        {
+            return new QueryPolice(this, translator);
+        }
+
+        public static readonly QueryPolicy Default = new QueryPolicy();
+    }
+
+    public class QueryPolice
+    {
+        QueryPolicy policy;
+        QueryTranslator translator;
+
+        public QueryPolice(QueryPolicy policy, QueryTranslator translator)
+        {
+            this.policy = policy;
+            this.translator = translator;
+        }
+
+        public QueryPolicy Policy
+        {
+            get { return this.policy; }
+        }
+
+        public QueryTranslator Translator
+        {
+            get { return this.translator; }
+        }
+
+        public virtual Expression ApplyPolicy(Expression expression, MemberInfo member)
+        {
+            return expression;
+        }
+
         /// <summary>
         /// Provides policy specific query translations.  This is where choices about inclusion of related objects and how
         /// heirarchies are materialized affect the definition of the queries.
         /// </summary>
         /// <param name="expression"></param>
         /// <returns></returns>
-        public virtual Expression Translate(QueryMapping mapping, Expression expression)
+        public virtual Expression Translate(Expression expression)
         {
             // add included relationships to client projection
-            expression = RelationshipIncluder.Include(mapping, this, expression);
-    
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-            expression = RedundantJoinRemover.Remove(expression);
+            var rewritten = RelationshipIncluder.Include(this.translator.Mapper, expression);
+            if (rewritten != expression)
+            {
+                expression = rewritten;
+                expression = UnusedColumnRemover.Remove(expression);
+                expression = RedundantColumnRemover.Remove(expression);
+                expression = RedundantSubqueryRemover.Remove(expression);
+                expression = RedundantJoinRemover.Remove(expression);
+            }
 
             // convert any singleton (1:1 or n:1) projections into server-side joins (cardinality is preserved)
-            expression = SingletonProjectionRewriter.Rewrite(mapping.Language, expression);
-
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-            expression = RedundantJoinRemover.Remove(expression);
+            rewritten = SingletonProjectionRewriter.Rewrite(this.translator.Linguist.Language, expression);
+            if (rewritten != expression)
+            {
+                expression = rewritten;
+                expression = UnusedColumnRemover.Remove(expression);
+                expression = RedundantColumnRemover.Remove(expression);
+                expression = RedundantSubqueryRemover.Remove(expression);
+                expression = RedundantJoinRemover.Remove(expression);
+            }
 
             // convert projections into client-side joins
-            expression = ClientJoinedProjectionRewriter.Rewrite(mapping.Language, expression);
-
-            expression = UnusedColumnRemover.Remove(expression);
-            expression = RedundantColumnRemover.Remove(expression);
-            expression = RedundantSubqueryRemover.Remove(expression);
-            expression = RedundantJoinRemover.Remove(expression);
+            rewritten = ClientJoinedProjectionRewriter.Rewrite(this.policy, this.translator.Linguist.Language, expression);
+            if (rewritten != expression)
+            {
+                expression = rewritten;
+                expression = UnusedColumnRemover.Remove(expression);
+                expression = RedundantColumnRemover.Remove(expression);
+                expression = RedundantSubqueryRemover.Remove(expression);
+                expression = RedundantJoinRemover.Remove(expression);
+            }
 
             return expression;
         }
@@ -84,11 +127,9 @@ namespace IQToolkit.Data.Common
         /// <param name="projection"></param>
         /// <param name="provider"></param>
         /// <returns></returns>
-        public virtual Expression BuildExecutionPlan(QueryMapping mapping, Expression query, Expression provider)
+        public virtual Expression BuildExecutionPlan(Expression query, Expression provider)
         {
-            return ExecutionBuilder.Build(mapping, this, query, provider);
+            return ExecutionBuilder.Build(this.translator.Linguist, this.policy, query, provider);
         }
-
-        public static readonly QueryPolicy Default = new QueryPolicy();
     }
 }

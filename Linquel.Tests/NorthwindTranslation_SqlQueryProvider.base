@@ -261,31 +261,46 @@ LEFT OUTER JOIN [Customers] AS t1
   ON (t1.[CustomerID] = t0.[CustomerID])
 WHERE ((t1.[City] = @p0) AND (t1.[Phone] &lt;&gt; @p1))</baseline>
   <baseline key="TestSelectAssociation">
-SELECT t0.[CustomerID] AS [CustomerID1], t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[Phone]
-FROM [Orders] AS t1
-LEFT OUTER JOIN [Customers] AS t0
-  ON (t0.[CustomerID] = t1.[CustomerID])</baseline>
+SELECT t1.[CustomerID] AS [CustomerID1], t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[Phone]
+FROM [Orders] AS t0
+LEFT OUTER JOIN [Customers] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])</baseline>
   <baseline key="TestSelectAssociations">
-SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID] AS [CustomerID1], t0.[Phone]
-FROM [Orders] AS t1
-LEFT OUTER JOIN [Customers] AS t0
-  ON (t0.[CustomerID] = t1.[CustomerID])</baseline>
+SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID] AS [CustomerID1], t1.[Phone]
+FROM [Orders] AS t0
+LEFT OUTER JOIN [Customers] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])</baseline>
   <baseline key="TestSelectAssociationsWhereAssociations">
-SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID] AS [CustomerID1], t0.[Phone]
-FROM [Orders] AS t1
-LEFT OUTER JOIN [Customers] AS t0
-  ON (t0.[CustomerID] = t1.[CustomerID])
-WHERE ((t0.[City] = @p0) AND (t0.[Phone] &lt;&gt; @p1))</baseline>
+SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID] AS [CustomerID1], t1.[Phone]
+FROM [Orders] AS t0
+LEFT OUTER JOIN [Customers] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+WHERE ((t1.[City] = @p0) AND (t1.[Phone] &lt;&gt; @p1))</baseline>
   <baseline key="TestCustomersIncludeOrders">
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderDate], t1.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
 FROM [Customers] AS t0
 LEFT OUTER JOIN [Orders] AS t1
   ON (t1.[CustomerID] = t0.[CustomerID])
 
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM [Customers] AS t0</baseline>
+  <baseline key="TestCustomersIncludeOrdersDeferred">
+SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
+FROM [Customers] AS t0
+
+SELECT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
+FROM [Orders] AS t0
+WHERE (t0.[CustomerID] = @n0)</baseline>
+  <baseline key="TestCustomersIncludeOrdersViaConstructorOnly">
+SELECT t1.[CustomerID], t1.[OrderID], t1.[OrderDate]
+FROM [Customers] AS t0
+LEFT OUTER JOIN [Orders] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+
+SELECT t0.[CustomerID], t0.[ContactName], t0.[CompanyName], t0.[Phone], t0.[City], t0.[Country]
+FROM [Customers] AS t0</baseline>
   <baseline key="TestCustomersWhereIncludeOrders">
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderDate], t1.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
 FROM [Customers] AS t0
 LEFT OUTER JOIN [Orders] AS t1
   ON (t1.[CustomerID] = t0.[CustomerID])
@@ -295,14 +310,14 @@ SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[Customer
 FROM [Customers] AS t0
 WHERE (t0.[City] = @p0)</baseline>
   <baseline key="TestCustomersIncludeOrdersAndDetails">
-SELECT t0.[OrderID], t1.[OrderID] AS [OrderID1], t1.[ProductID]
-FROM [Customers] AS t2
-LEFT OUTER JOIN [Orders] AS t0
-  ON (t0.[CustomerID] = t2.[CustomerID])
-LEFT OUTER JOIN [Order Details] AS t1
-  ON (t1.[OrderID] = t0.[OrderID])
+SELECT t2.[OrderID], t2.[ProductID]
+FROM [Customers] AS t0
+LEFT OUTER JOIN [Orders] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+LEFT OUTER JOIN [Order Details] AS t2
+  ON (t2.[OrderID] = t1.[OrderID])
 
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderDate], t1.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
 FROM [Customers] AS t0
 LEFT OUTER JOIN [Orders] AS t1
   ON (t1.[CustomerID] = t0.[CustomerID])
@@ -310,15 +325,15 @@ LEFT OUTER JOIN [Orders] AS t1
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM [Customers] AS t0</baseline>
   <baseline key="TestCustomersWhereIncludeOrdersAndDetails">
-SELECT t0.[OrderID], t1.[OrderID] AS [OrderID1], t1.[ProductID]
-FROM [Customers] AS t2
-LEFT OUTER JOIN [Orders] AS t0
-  ON (t0.[CustomerID] = t2.[CustomerID])
-LEFT OUTER JOIN [Order Details] AS t1
-  ON (t1.[OrderID] = t0.[OrderID])
-WHERE (t2.[City] = @p0)
+SELECT t2.[OrderID], t2.[ProductID]
+FROM [Customers] AS t0
+LEFT OUTER JOIN [Orders] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+LEFT OUTER JOIN [Order Details] AS t2
+  ON (t2.[OrderID] = t1.[OrderID])
+WHERE (t0.[City] = @p0)
 
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderDate], t1.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
 FROM [Customers] AS t0
 LEFT OUTER JOIN [Orders] AS t1
   ON (t1.[CustomerID] = t0.[CustomerID])
@@ -336,11 +351,11 @@ SELECT t0.[ContactName]
 FROM [Customers] AS t0
 WHERE (t0.[City] = @p0)</baseline>
   <baseline key="TestSingletonAssociationWithMemberAccess">
-SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID] AS [CustomerID1], t0.[Phone]
-FROM [Orders] AS t1
-LEFT OUTER JOIN [Customers] AS t0
-  ON (t0.[CustomerID] = t1.[CustomerID])
-WHERE ((t0.[City] = @p0) AND (t0.[Phone] &lt;&gt; @p1))</baseline>
+SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID] AS [CustomerID1], t1.[Phone]
+FROM [Orders] AS t0
+LEFT OUTER JOIN [Customers] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+WHERE ((t1.[City] = @p0) AND (t1.[Phone] &lt;&gt; @p1))</baseline>
   <baseline key="TestCompareDateTimesWithDifferentNullability">
 SELECT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
 FROM [Orders] AS t0
@@ -381,24 +396,24 @@ SELECT DISTINCT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.
 FROM (
   SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM (
-    SELECT t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone], ROW_NUMBER() OVER(ORDER BY t2.[ContactName]) AS [rownum]
+    SELECT ROW_NUMBER() OVER(ORDER BY t2.[ContactName]) AS [_rownum], t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone]
     FROM [Customers] AS t2
     ) AS t1
-  WHERE t1.[rownum] BETWEEN (5 + 1) AND (5 + 10)
+  WHERE t1.[_rownum] BETWEEN (5 + 1) AND (5 + 10)
   ) AS t0</baseline>
   <baseline key="TestTakeSkipDistinct">
 SELECT DISTINCT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
   SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM (
-    SELECT t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone], ROW_NUMBER() OVER(ORDER BY t2.[ContactName]) AS [rownum]
+    SELECT ROW_NUMBER() OVER(ORDER BY t2.[ContactName]) AS [_rownum], t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone]
     FROM (
       SELECT TOP (10) t3.[City], t3.[CompanyName], t3.[ContactName], t3.[Country], t3.[CustomerID], t3.[Phone]
       FROM [Customers] AS t3
       ORDER BY t3.[ContactName]
       ) AS t2
     ) AS t1
-  WHERE (t1.[rownum] &gt; 5)
+  WHERE (t1.[_rownum] &gt; 5)
   ) AS t0</baseline>
   <baseline key="TestFirst">
 SELECT TOP (1) t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
@@ -758,15 +773,15 @@ WHERE (ROUND(t0.[OrderID], 0) = 0)</baseline>
   <baseline key="TestMathAcos">
 SELECT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
 FROM [Orders] AS t0
-WHERE (ACOS(t0.[OrderID]) = 0.0)</baseline>
+WHERE (ACOS((1.0 / t0.[OrderID])) = 0.0)</baseline>
   <baseline key="TestMathAsin">
 SELECT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
 FROM [Orders] AS t0
-WHERE (ASIN(t0.[OrderID]) = 0.0)</baseline>
+WHERE (ASIN((1.0 / t0.[OrderID])) = 0.0)</baseline>
   <baseline key="TestMathAtan2">
 SELECT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
 FROM [Orders] AS t0
-WHERE (ATN2(t0.[OrderID], 3.0) = 0.0)</baseline>
+WHERE (ATN2((1.0 / t0.[OrderID]), 3.0) = 0.0)</baseline>
   <baseline key="TestWhere">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM [Customers] AS t0
@@ -843,17 +858,15 @@ FROM [Customers] AS t0</baseline>
 SELECT NULL 
 FROM [Customers] AS t0</baseline>
   <baseline key="TestSelectNestedCollection">
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderID]
-FROM [Customers] AS t0
-LEFT OUTER JOIN [Orders] AS t1
-  ON ((t1.[CustomerID] = t0.[CustomerID]) AND (YEAR(t1.[OrderDate]) = 1997))
-WHERE (t0.[City] = @p0)
-
 SELECT t0.[CustomerID]
 FROM [Customers] AS t0
-WHERE (t0.[City] = @p0)</baseline>
+WHERE (t0.[City] = @p0)
+
+SELECT t0.[OrderID]
+FROM [Orders] AS t0
+WHERE ((t0.[CustomerID] = @n0) AND (YEAR(t0.[OrderDate]) = 1997))</baseline>
   <baseline key="TestSelectNestedCollectionInAnonymousType">
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderID]
 FROM [Customers] AS t0
 LEFT OUTER JOIN [Orders] AS t1
   ON ((t1.[CustomerID] = t0.[CustomerID]) AND (YEAR(t1.[OrderDate]) = 1997))
@@ -873,7 +886,7 @@ FROM [Customers] AS t0
 INNER JOIN [Orders] AS t1
   ON ((t0.[CustomerID] = t1.[CustomerID]) AND (t0.[CustomerID] = t1.[CustomerID]))</baseline>
   <baseline key="TestJoinIntoCustomersOrders">
-SELECT t0.[CustomerID], t1.[CustomerID] AS [CustomerID1], t1.[OrderDate], t1.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
 FROM [Customers] AS t0
 LEFT OUTER JOIN [Orders] AS t1
   ON (t1.[CustomerID] = t0.[CustomerID])
@@ -898,20 +911,20 @@ FROM [Customers] AS t0
 INNER JOIN [Orders] AS t1
   ON (t0.[CustomerID] = t1.[CustomerID])</baseline>
   <baseline key="TestMultipleJoinsWithJoinConditionsInWhere">
-SELECT t0.[ProductID]
-FROM [Customers] AS t1
-INNER JOIN [Orders] AS t2
-  ON (t2.[CustomerID] = t1.[CustomerID])
-INNER JOIN [Order Details] AS t0
-  ON (t2.[OrderID] = t0.[OrderID])
-WHERE (t1.[CustomerID] = @p0)</baseline>
+SELECT t2.[ProductID]
+FROM [Customers] AS t0
+INNER JOIN [Orders] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+INNER JOIN [Order Details] AS t2
+  ON (t1.[OrderID] = t2.[OrderID])
+WHERE (t0.[CustomerID] = @p0)</baseline>
   <baseline key="TestMultipleJoinsWithMissingJoinCondition">
-SELECT t0.[ProductID]
-FROM [Customers] AS t1
-INNER JOIN [Orders] AS t2
-  ON (t2.[CustomerID] = t1.[CustomerID])
-CROSS JOIN [Order Details] AS t0
-WHERE (t1.[CustomerID] = @p0)</baseline>
+SELECT t2.[ProductID]
+FROM [Customers] AS t0
+INNER JOIN [Orders] AS t1
+  ON (t1.[CustomerID] = t0.[CustomerID])
+CROSS JOIN [Order Details] AS t2
+WHERE (t0.[CustomerID] = @p0)</baseline>
   <baseline key="TestOrderBy">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM [Customers] AS t0
@@ -961,14 +974,14 @@ SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[Customer
 FROM [Customers] AS t0
 WHERE ((t0.[City] IS NULL AND @n0 IS NULL) OR (t0.[City] = @n0))</baseline>
   <baseline key="TestGroupBySelectMany">
-SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
+SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
 FROM (
-  SELECT t1.[City]
-  FROM [Customers] AS t1
-  GROUP BY t1.[City]
-  ) AS t2
-INNER JOIN [Customers] AS t0
-  ON ((t0.[City] IS NULL AND t2.[City] IS NULL) OR (t0.[City] = t2.[City]))</baseline>
+  SELECT t2.[City]
+  FROM [Customers] AS t2
+  GROUP BY t2.[City]
+  ) AS t0
+INNER JOIN [Customers] AS t1
+  ON ((t1.[City] IS NULL AND t0.[City] IS NULL) OR (t1.[City] = t0.[City]))</baseline>
   <baseline key="TestGroupBySum">
 SELECT SUM(t0.[OrderID]) AS [agg1]
 FROM [Orders] AS t0
@@ -1018,15 +1031,15 @@ SELECT SUM(t0.[OrderID]) AS [agg1]
 FROM [Orders] AS t0
 GROUP BY t0.[CustomerID]</baseline>
   <baseline key="TestOrderByGroupBySelectMany">
-SELECT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
+SELECT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
 FROM (
-  SELECT t1.[CustomerID]
-  FROM [Orders] AS t1
-  GROUP BY t1.[CustomerID]
-  ) AS t2
-INNER JOIN [Orders] AS t0
-  ON ((t0.[CustomerID] IS NULL AND t2.[CustomerID] IS NULL) OR (t0.[CustomerID] = t2.[CustomerID]))
-ORDER BY t0.[OrderID]</baseline>
+  SELECT t2.[CustomerID]
+  FROM [Orders] AS t2
+  GROUP BY t2.[CustomerID]
+  ) AS t0
+INNER JOIN [Orders] AS t1
+  ON ((t1.[CustomerID] IS NULL AND t0.[CustomerID] IS NULL) OR (t1.[CustomerID] = t0.[CustomerID]))
+ORDER BY t1.[OrderID]</baseline>
   <baseline key="TestSumWithNoArg">
 SELECT SUM(t0.[OrderID])
 FROM [Orders] AS t0</baseline>
@@ -1078,28 +1091,28 @@ WHERE ((t0.[CustomerID] IS NULL AND @n0 IS NULL) OR (t0.[CustomerID] = @n0))</ba
   <baseline key="TestDistinctCount">
 SELECT COUNT(*)
 FROM (
-  SELECT DISTINCT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
-  FROM [Customers] AS t0
-  ) AS t1</baseline>
+  SELECT DISTINCT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
+  FROM [Customers] AS t1
+  ) AS t0</baseline>
   <baseline key="TestSelectDistinctCount">
 SELECT COUNT(*)
 FROM (
-  SELECT DISTINCT t0.[City]
-  FROM [Customers] AS t0
-  ) AS t1</baseline>
+  SELECT DISTINCT t1.[City]
+  FROM [Customers] AS t1
+  ) AS t0</baseline>
   <baseline key="TestSelectSelectDistinctCount">
 SELECT COUNT(*)
 FROM (
-  SELECT DISTINCT t0.[City]
-  FROM [Customers] AS t0
-  ) AS t1</baseline>
+  SELECT DISTINCT t1.[City]
+  FROM [Customers] AS t1
+  ) AS t0</baseline>
   <baseline key="TestDistinctCountPredicate">
 SELECT COUNT(*)
 FROM (
-  SELECT DISTINCT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
-  FROM [Customers] AS t0
-  WHERE (t0.[CustomerID] = @p0)
-  ) AS t1</baseline>
+  SELECT DISTINCT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
+  FROM [Customers] AS t1
+  WHERE (t1.[CustomerID] = @p0)
+  ) AS t0</baseline>
   <baseline key="TestDistinctSumWithArg">
 SELECT SUM(t0.[OrderID])
 FROM (
@@ -1127,79 +1140,79 @@ FROM (
   <baseline key="TestDistinctTakeCount">
 SELECT COUNT(*)
 FROM (
-  SELECT TOP (5) t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
+  SELECT TOP (5) t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
   FROM (
-    SELECT DISTINCT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
-    FROM [Orders] AS t1
-    ) AS t0
-  ) AS t2</baseline>
+    SELECT DISTINCT t2.[CustomerID], t2.[OrderDate], t2.[OrderID]
+    FROM [Orders] AS t2
+    ) AS t1
+  ) AS t0</baseline>
   <baseline key="TestTakeDistinctCount">
 SELECT COUNT(*)
 FROM (
-  SELECT DISTINCT t0.[CustomerID], t0.[OrderDate], t0.[OrderID]
+  SELECT DISTINCT t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
   FROM (
-    SELECT TOP (5) t1.[CustomerID], t1.[OrderDate], t1.[OrderID]
-    FROM [Orders] AS t1
-    ) AS t0
-  ) AS t2</baseline>
+    SELECT TOP (5) t2.[CustomerID], t2.[OrderDate], t2.[OrderID]
+    FROM [Orders] AS t2
+    ) AS t1
+  ) AS t0</baseline>
   <baseline key="TestSkip">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
-  SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone], ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [rownum]
+  SELECT ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [_rownum], t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM [Customers] AS t1
   ) AS t0
-WHERE (t0.[rownum] &gt; 5)
+WHERE (t0.[_rownum] &gt; 5)
 ORDER BY t0.[ContactName]</baseline>
   <baseline key="TestTakeSkip">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
-  SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone], ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [rownum]
+  SELECT ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [_rownum], t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM (
     SELECT TOP (10) t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone]
     FROM [Customers] AS t2
     ORDER BY t2.[ContactName]
     ) AS t1
   ) AS t0
-WHERE (t0.[rownum] &gt; 5)
+WHERE (t0.[_rownum] &gt; 5)
 ORDER BY t0.[ContactName]</baseline>
   <baseline key="TestDistinctSkip">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
-  SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone], ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [rownum]
+  SELECT ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [_rownum], t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM (
     SELECT DISTINCT t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone]
     FROM [Customers] AS t2
     ) AS t1
   ) AS t0
-WHERE (t0.[rownum] &gt; 5)
+WHERE (t0.[_rownum] &gt; 5)
 ORDER BY t0.[ContactName]</baseline>
   <baseline key="TestSkipTake">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
-  SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone], ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [rownum]
+  SELECT ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [_rownum], t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM [Customers] AS t1
   ) AS t0
-WHERE t0.[rownum] BETWEEN (5 + 1) AND (5 + 10)
+WHERE t0.[_rownum] BETWEEN (5 + 1) AND (5 + 10)
 ORDER BY t0.[ContactName]</baseline>
   <baseline key="TestDistinctSkipTake">
 SELECT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
-  SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone], ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [rownum]
+  SELECT ROW_NUMBER() OVER(ORDER BY t1.[ContactName]) AS [_rownum], t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM (
     SELECT DISTINCT t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone]
     FROM [Customers] AS t2
     ) AS t1
   ) AS t0
-WHERE t0.[rownum] BETWEEN (5 + 1) AND (5 + 10)
+WHERE t0.[_rownum] BETWEEN (5 + 1) AND (5 + 10)
 ORDER BY t0.[ContactName]</baseline>
   <baseline key="TestSkipDistinct">
 SELECT DISTINCT t0.[City], t0.[CompanyName], t0.[ContactName], t0.[Country], t0.[CustomerID], t0.[Phone]
 FROM (
   SELECT t1.[City], t1.[CompanyName], t1.[ContactName], t1.[Country], t1.[CustomerID], t1.[Phone]
   FROM (
-    SELECT t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone], ROW_NUMBER() OVER(ORDER BY t2.[ContactName]) AS [rownum]
+    SELECT ROW_NUMBER() OVER(ORDER BY t2.[ContactName]) AS [_rownum], t2.[City], t2.[CompanyName], t2.[ContactName], t2.[Country], t2.[CustomerID], t2.[Phone]
     FROM [Customers] AS t2
     ) AS t1
-  WHERE (t1.[rownum] &gt; 5)
+  WHERE (t1.[_rownum] &gt; 5)
   ) AS t0</baseline>
 </baselines>

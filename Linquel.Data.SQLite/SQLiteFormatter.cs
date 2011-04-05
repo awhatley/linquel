@@ -29,6 +29,7 @@ namespace IQToolkit.Data.SQLite
 
         protected override Expression VisitSelect(SelectExpression select)
         {
+            this.AddAliases(select.From);
             this.Write("SELECT ");
             if (select.IsDistinct)
             {

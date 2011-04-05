@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Data;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -50,6 +49,12 @@ namespace IQToolkit.Data.Common
                 else if (expectedType.IsArray && expectedType.GetArrayRank() == 1)
                 {
                     body = Expression.Call(typeof(Enumerable), "ToArray", new Type[] { expectedElementType }, CoerceElement(expectedElementType, p));
+                }
+                else if (expectedType.IsGenericType && expectedType.GetGenericTypeDefinition().IsAssignableFrom(typeof(IList<>)))
+                {
+                    var gt = typeof(DeferredList<>).MakeGenericType(expectedType.GetGenericArguments());
+                    var cn = gt.GetConstructor(new Type[] {typeof(IEnumerable<>).MakeGenericType(expectedType.GetGenericArguments())});
+                    body = Expression.New(cn, CoerceElement(expectedElementType, p));
                 }
                 else if (expectedType.IsAssignableFrom(typeof(List<>).MakeGenericType(actualElementType)))
                 {

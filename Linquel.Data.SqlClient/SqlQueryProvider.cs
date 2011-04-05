@@ -22,13 +22,8 @@ namespace IQToolkit.Data.SqlClient
     {
         bool? allowMulitpleActiveResultSets;
 
-        public SqlQueryProvider(SqlConnection connection, QueryMapping mapping)
-            : base(connection, mapping, QueryPolicy.Default)
-        {
-        }
-
         public SqlQueryProvider(SqlConnection connection, QueryMapping mapping, QueryPolicy policy)
-            : base(connection, mapping, policy)
+            : base(connection, TSqlLanguage.Default, mapping, policy)
         {
         }
 
@@ -40,11 +35,6 @@ namespace IQToolkit.Data.SqlClient
         public static string GetConnectionString(string databaseFile)
         {
             return string.Format(@"Data Source=.\SQLEXPRESS;Integrated Security=True;Connect Timeout=30;User Instance=True;MultipleActiveResultSets=true;AttachDbFilename='{0}'", databaseFile);
-        }
-
-        protected override bool BufferResultRows
-        {
-            get { return !this.AllowsMultipleActiveResultSets; }
         }
 
         public bool AllowsMultipleActiveResultSets
@@ -61,92 +51,113 @@ namespace IQToolkit.Data.SqlClient
             }
         }
 
-        protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        protected override QueryExecutor CreateExecutor()
         {
-            TSqlType sqlType = (TSqlType)parameter.QueryType;
-            if (sqlType == null)
-                sqlType = (TSqlType)this.Language.TypeSystem.GetColumnType(parameter.Type);
-            int len = sqlType.Length;
-            if (len == 0 && TSqlTypeSystem.IsVariableLength(sqlType.SqlDbType))
-            {
-                len = Int32.MaxValue;
-            }
-            var p = ((SqlCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, len);
-            if (sqlType.Precision != 0)
-                p.Precision = (byte)sqlType.Precision;
-            if (sqlType.Scale != 0)
-                p.Scale = (byte)sqlType.Scale;
-            p.Value = value ?? DBNull.Value;
+            return new Executor(this);
         }
 
-        public override IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream)
+        new class Executor : DbEntityProvider.Executor
         {
-            this.StartUsingConnection();
-            try
+            SqlQueryProvider provider;
+
+            public Executor(SqlQueryProvider provider)
+                : base(provider)
             {
-                var result = this.ExecuteBatch(query, paramSets, batchSize);
-                if (!stream || this.ActionOpenedConnection)
+                this.provider = provider;
+            }
+
+            protected override bool BufferResultRows
+            {
+                get { return !this.provider.AllowsMultipleActiveResultSets; }
+            }
+
+            protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+            {
+                DbQueryType sqlType = (DbQueryType)parameter.QueryType;
+                if (sqlType == null)
+                    sqlType = (DbQueryType)this.Provider.Language.TypeSystem.GetColumnType(parameter.Type);
+                int len = sqlType.Length;
+                if (len == 0 && DbTypeSystem.IsVariableLength(sqlType.SqlDbType))
                 {
-                    return result.ToList();
+                    len = Int32.MaxValue;
                 }
-                else
+                var p = ((SqlCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, len);
+                if (sqlType.Precision != 0)
+                    p.Precision = (byte)sqlType.Precision;
+                if (sqlType.Scale != 0)
+                    p.Scale = (byte)sqlType.Scale;
+                p.Value = value ?? DBNull.Value;
+            }
+
+            public override IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize, bool stream)
+            {
+                this.StartUsingConnection();
+                try
                 {
-                    return new EnumerateOnce<int>(result);
-                }
-            }
-            finally
-            {
-                this.StopUsingConnection();
-            }
-        }
-
-        private IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize)
-        {
-            SqlCommand cmd = (SqlCommand)this.GetCommand(query, null);
-            DataTable dataTable = new DataTable();
-            for (int i = 0, n = query.Parameters.Count; i < n; i++)
-            {
-                var qp = query.Parameters[i];
-                cmd.Parameters[i].SourceColumn = qp.Name;
-                dataTable.Columns.Add(qp.Name, TypeHelper.GetNonNullableType(qp.Type));
-            }
-            SqlDataAdapter dataAdapter = new SqlDataAdapter();
-            dataAdapter.InsertCommand = cmd;
-            dataAdapter.InsertCommand.UpdatedRowSource = UpdateRowSource.None;
-            dataAdapter.UpdateBatchSize = batchSize;
-
-            this.LogMessage("-- Start SQL Batching --");
-            this.LogMessage("");
-            this.LogCommand(query, null);
-
-            IEnumerator<object[]> en = paramSets.GetEnumerator();
-            using (en)
-            {
-                bool hasNext = true;
-                while (hasNext)
-                {
-                    int count = 0;
-                    for (; count < dataAdapter.UpdateBatchSize && (hasNext = en.MoveNext()); count++)
+                    var result = this.ExecuteBatch(query, paramSets, batchSize);
+                    if (!stream || this.ActionOpenedConnection)
                     {
-                        var paramValues = en.Current;
-                        dataTable.Rows.Add(paramValues);
-                        this.LogParameters(query, paramValues);
-                        this.LogMessage("");
+                        return result.ToList();
                     }
-                    if (count > 0)
+                    else
                     {
-                        int n = dataAdapter.Update(dataTable);
-                        for (int i = 0; i < count; i++)
+                        return new EnumerateOnce<int>(result);
+                    }
+                }
+                finally
+                {
+                    this.StopUsingConnection();
+                }
+            }
+
+            private IEnumerable<int> ExecuteBatch(QueryCommand query, IEnumerable<object[]> paramSets, int batchSize)
+            {
+                SqlCommand cmd = (SqlCommand)this.GetCommand(query, null);
+                DataTable dataTable = new DataTable();
+                for (int i = 0, n = query.Parameters.Count; i < n; i++)
+                {
+                    var qp = query.Parameters[i];
+                    cmd.Parameters[i].SourceColumn = qp.Name;
+                    dataTable.Columns.Add(qp.Name, TypeHelper.GetNonNullableType(qp.Type));
+                }
+                SqlDataAdapter dataAdapter = new SqlDataAdapter();
+                dataAdapter.InsertCommand = cmd;
+                dataAdapter.InsertCommand.UpdatedRowSource = UpdateRowSource.None;
+                dataAdapter.UpdateBatchSize = batchSize;
+
+                this.LogMessage("-- Start SQL Batching --");
+                this.LogMessage("");
+                this.LogCommand(query, null);
+
+                IEnumerator<object[]> en = paramSets.GetEnumerator();
+                using (en)
+                {
+                    bool hasNext = true;
+                    while (hasNext)
+                    {
+                        int count = 0;
+                        for (; count < dataAdapter.UpdateBatchSize && (hasNext = en.MoveNext()); count++)
                         {
-                            yield return (i < n) ? 1 : 0;
+                            var paramValues = en.Current;
+                            dataTable.Rows.Add(paramValues);
+                            this.LogParameters(query, paramValues);
+                            this.LogMessage("");
                         }
-                        dataTable.Rows.Clear();
+                        if (count > 0)
+                        {
+                            int n = dataAdapter.Update(dataTable);
+                            for (int i = 0; i < count; i++)
+                            {
+                                yield return (i < n) ? 1 : 0;
+                            }
+                            dataTable.Rows.Clear();
+                        }
                     }
                 }
-            }
 
-            this.LogMessage(string.Format("-- End SQL Batching --"));
-            this.LogMessage("");
+                this.LogMessage(string.Format("-- End SQL Batching --"));
+                this.LogMessage("");
+            }
         }
     }
 }

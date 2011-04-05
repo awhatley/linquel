@@ -8,7 +8,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Xml;
-using System.Xml.Linq;
 
 namespace Test
 {
@@ -1153,20 +1152,20 @@ namespace Test
         [ExcludeProvider("SqlCe")]
         public void TestMathAcos()
         {
-            TestQuery(db.Orders.Where(o => Math.Acos(o.OrderID) == 0));
+            TestQuery(db.Orders.Where(o => Math.Acos(1.0/o.OrderID) == 0));
         }
 
         [ExcludeProvider("Access")]
         [ExcludeProvider("SqlCe")]
         public void TestMathAsin()
         {
-            TestQuery(db.Orders.Where(o => Math.Asin(o.OrderID) == 0));
+            TestQuery(db.Orders.Where(o => Math.Asin(1.0/o.OrderID) == 0));
         }
 
         [ExcludeProvider("Access")]
         public void TestMathAtan2()
         {
-            TestQuery(db.Orders.Where(o => Math.Atan2(o.OrderID, 3) == 0));
+            TestQuery(db.Orders.Where(o => Math.Atan2(1.0/o.OrderID, 3) == 0));
         }
 
         [ExcludeProvider("SQLite")]
@@ -1550,7 +1549,32 @@ namespace Test
 
         public void TestCustomersIncludeOrders()
         {
-            Northwind nw = new Northwind(this.provider.New(new TestPolicy("Orders")));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            TestQuery(
+                nw.Customers
+                );
+        }
+
+        public void TestCustomersIncludeOrdersDeferred()
+        {
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders, true);
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            TestQuery(
+                nw.Customers
+                );
+        }
+
+        public void TestCustomersIncludeOrdersViaConstructorOnly()
+        {
+            var mapping = new AttributeMapping(typeof(NorthwindX));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<CustomerX>(c => c.Orders);
+            NorthwindX nw = new NorthwindX(this.provider.New(policy).New(mapping));
 
             TestQuery(
                 nw.Customers
@@ -1559,7 +1583,9 @@ namespace Test
 
         public void TestCustomersWhereIncludeOrders()
         {
-            Northwind nw = new Northwind(this.provider.New(new TestPolicy("Orders")));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            Northwind nw = new Northwind(this.provider.New(policy));
 
             TestQuery(
                 from c in nw.Customers
@@ -1570,7 +1596,10 @@ namespace Test
 
         public void TestCustomersIncludeOrdersAndDetails()
         {
-            Northwind nw = new Northwind(this.provider.New(new TestPolicy("Orders", "Details")));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            policy.IncludeWith<Order>(o => o.Details);
+            Northwind nw = new Northwind(this.provider.New(policy));
 
             TestQuery(
                 nw.Customers
@@ -1579,7 +1608,10 @@ namespace Test
 
         public void TestCustomersWhereIncludeOrdersAndDetails()
         {
-            Northwind nw = new Northwind(this.provider.New(new TestPolicy("Orders", "Details")));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            policy.IncludeWith<Order>(o => o.Details);
+            Northwind nw = new Northwind(this.provider.New(policy));
 
             TestQuery(
                 from c in nw.Customers
@@ -1602,7 +1634,7 @@ namespace Test
 
         public void TestXmlMappingSelectCustomers()
         {
-            var nw = new Northwind(this.provider.New(XmlMapping.FromXml(this.provider.Language, File.ReadAllText(@"Northwind.xml"))));
+            var nw = new Northwind(this.provider.New(XmlMapping.FromXml(File.ReadAllText(@"Northwind.xml"))));
 
             TestQuery(
                 from c in db.Customers

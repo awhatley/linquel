@@ -16,7 +16,7 @@ namespace IQToolkit.Data.Access
 {
     using IQToolkit.Data.Common;
 
-    public class AccessTypeSystem : TSqlTypeSystem
+    public class AccessTypeSystem : DbTypeSystem
     {
         public override int StringDefaultSize
         {
@@ -72,7 +72,7 @@ namespace IQToolkit.Data.Access
         public override string GetVariableDeclaration(QueryType type, bool suppressSize)
         {
             StringBuilder sb = new StringBuilder();
-            TSqlType sqlType = (TSqlType)type;
+            DbQueryType sqlType = (DbQueryType)type;
             SqlDbType sqlDbType = sqlType.SqlDbType;
 
             switch (sqlDbType)

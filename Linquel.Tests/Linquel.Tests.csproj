@@ -36,7 +36,6 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Data.SqlServerCe, Version=3.5.1.0, Culture=neutral, PublicKeyToken=89845dcd8080cc91, processorArchitecture=MSIL" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -70,23 +69,8 @@
     <Compile Include="TestHarness.cs">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="TestPolicy.cs">
-      <SubType>Code</SubType>
-    </Compile>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Linquel.Data.Access\Linquel.Data.Access.csproj">
-      <Project>{A830313B-D716-48A5-8199-C3EE9E08C9F7}</Project>
-      <Name>Linquel.Data.Access</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Linquel.Data.SqlClient\Linquel.Data.SqlClient.csproj">
-      <Project>{96ECACBD-87C7-4B6A-9ABA-FF23F350E844}</Project>
-      <Name>Linquel.Data.SqlClient</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Linquel.Data.SqlServerCe\Linquel.Data.SqlServerCe.csproj">
-      <Project>{2D916130-2B32-4AE9-8012-D5A1079368A7}</Project>
-      <Name>Linquel.Data.SqlServerCe</Name>
-    </ProjectReference>
     <ProjectReference Include="..\Linquel.Data\Linquel.Data.csproj">
       <Project>{AACFE85C-B089-42FE-A50F-152E0BAE7BAB}</Project>
       <Name>Linquel.Data</Name>

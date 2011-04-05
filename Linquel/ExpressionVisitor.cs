@@ -258,6 +258,41 @@ namespace IQToolkit
             return original;
         }
 
+        protected virtual ReadOnlyCollection<Expression> VisitMemberAndExpressionList(ReadOnlyCollection<MemberInfo> members, ReadOnlyCollection<Expression> original)
+        {
+            if (original != null)
+            {
+                List<Expression> list = null;
+                for (int i = 0, n = original.Count; i < n; i++)
+                {
+                    Expression p = this.VisitMemberAndExpression(members != null ? members[i] : null, original[i]);
+                    if (list != null)
+                    {
+                        list.Add(p);
+                    }
+                    else if (p != original[i])
+                    {
+                        list = new List<Expression>(n);
+                        for (int j = 0; j < i; j++)
+                        {
+                            list.Add(original[j]);
+                        }
+                        list.Add(p);
+                    }
+                }
+                if (list != null)
+                {
+                    return list.AsReadOnly();
+                }
+            }
+            return original;
+        }
+
+        protected virtual Expression VisitMemberAndExpression(MemberInfo member, Expression expression)
+        {
+            return this.Visit(expression);
+        }
+
         protected virtual MemberAssignment VisitMemberAssignment(MemberAssignment assignment)
         {
             Expression e = this.Visit(assignment.Expression);
@@ -370,7 +405,7 @@ namespace IQToolkit
 
         protected virtual NewExpression VisitNew(NewExpression nex)
         {
-            IEnumerable<Expression> args = this.VisitExpressionList(nex.Arguments);
+            IEnumerable<Expression> args = this.VisitMemberAndExpressionList(nex.Members, nex.Arguments);
             return this.UpdateNew(nex, nex.Constructor, args, nex.Members);
         }
 

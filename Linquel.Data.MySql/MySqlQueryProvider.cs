@@ -20,13 +20,8 @@ namespace IQToolkit.Data.MySqlClient
 
     public class MySqlQueryProvider : DbEntityProvider
     {
-        public MySqlQueryProvider(MySqlConnection connection, QueryMapping mapping)
-            : base(connection, mapping, QueryPolicy.Default)
-        {
-        }
-
         public MySqlQueryProvider(MySqlConnection connection, QueryMapping mapping, QueryPolicy policy)
-            : base(connection, mapping, policy)
+            : base(connection, MySqlLanguage.Default, mapping, policy)
         {
         }
 
@@ -40,25 +35,41 @@ namespace IQToolkit.Data.MySqlClient
             return string.Format(@"Server=127.0.0.1;Database={0}", databaseName);
         }
 
-        protected override bool BufferResultRows
+        protected override QueryExecutor CreateExecutor()
         {
-            get { return true; }
+            return new Executor(this);
         }
 
-        protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        new class Executor : DbEntityProvider.Executor
         {
-            TSqlType sqlType = (TSqlType)parameter.QueryType;
-            if (sqlType == null)
-                sqlType = (TSqlType)this.Language.TypeSystem.GetColumnType(parameter.Type);
-            var p = ((MySqlCommand)command).Parameters.Add(parameter.Name, ToMySqlDbType(sqlType.SqlDbType), sqlType.Length);
-            if (sqlType.Precision != 0)
-                p.Precision = (byte)sqlType.Precision;
-            if (sqlType.Scale != 0)
-                p.Scale = (byte)sqlType.Scale;
-            p.Value = value ?? DBNull.Value;
+            MySqlQueryProvider provider;
+
+            public Executor(MySqlQueryProvider provider)
+                : base(provider)
+            {
+                this.provider = provider;
+            }
+
+            protected override bool BufferResultRows
+            {
+                get { return true; }
+            }
+
+            protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+            {
+                DbQueryType sqlType = (DbQueryType)parameter.QueryType;
+                if (sqlType == null)
+                    sqlType = (DbQueryType)this.provider.Language.TypeSystem.GetColumnType(parameter.Type);
+                var p = ((MySqlCommand)command).Parameters.Add(parameter.Name, ToMySqlDbType(sqlType.SqlDbType), sqlType.Length);
+                if (sqlType.Precision != 0)
+                    p.Precision = (byte)sqlType.Precision;
+                if (sqlType.Scale != 0)
+                    p.Scale = (byte)sqlType.Scale;
+                p.Value = value ?? DBNull.Value;
+            }
         }
 
-        protected MySqlDbType ToMySqlDbType(SqlDbType dbType)
+        public static MySqlDbType ToMySqlDbType(SqlDbType dbType)
         {
             switch (dbType)
             {

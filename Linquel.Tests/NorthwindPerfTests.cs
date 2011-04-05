@@ -10,7 +10,6 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Xml;
-using System.Xml.Linq;
 
 namespace Test
 {
@@ -45,15 +44,16 @@ namespace Test
             var adoTime = RunTimedTest(iterations, i =>
             {
                 var cmd = provider.Connection.CreateCommand();
-                cmd.CommandText = "SELECT TOP (@p0) OrderID, ProductID FROM [Order Details] WHERE OrderID > @p1";
-                var p = cmd.CreateParameter();
-                p.ParameterName = "p0";
-                p.Value = n;
-                cmd.Parameters.Add(p);
-                var p2 = cmd.CreateParameter();
-                p2.ParameterName = "p1";
-                p2.Value = i;
-                cmd.Parameters.Add(p2);
+                //cmd.CommandText = "SELECT TOP (@p0) OrderID, ProductID FROM [Order Details] WHERE OrderID > @p1";
+                cmd.CommandText = "PARAMETERS p1 int; SELECT TOP 50 OrderID, ProductID FROM [Order Details] WHERE OrderID > p1";
+                //var p0 = cmd.CreateParameter();
+                //p0.ParameterName = "p0";
+                //p0.Value = n;
+                //cmd.Parameters.Add(p);
+                var p1 = cmd.CreateParameter();
+                p1.ParameterName = "p1";
+                p1.Value = i;
+                cmd.Parameters.Add(p1);
                 var reader = cmd.ExecuteReader();
                 var list = new List<object>();
                 while (reader.Read())
@@ -69,10 +69,11 @@ namespace Test
             Console.WriteLine("Compiled IQ: {0}  {1:#.##}x vs ADO", compiledTime, compiledTime/adoTime);
         }
 
+        static int n = 50;
         public void TestQueryCache()
         {
-            int n = 50;
             int iterations = 1000;
+            var cache = new QueryCache(10);
 
             var notCached = RunTimedTest(iterations, i =>
             {
@@ -80,7 +81,14 @@ namespace Test
                 System.Diagnostics.Debug.Assert(results.Count == n);
             });
 
-            var cache = new QueryCache(10);
+            this.provider.Cache = cache;
+            var autoCached = RunTimedTest(iterations, i =>
+            {
+                var results = db.OrderDetails.Where(d => d.OrderID > i).Take(n).ToList();
+                System.Diagnostics.Debug.Assert(results.Count == n);
+            });
+            this.provider.Cache = null;
+
             var check = RunTimedTest(iterations, i =>
             {
                 var query = db.OrderDetails.Where(d => d.OrderID > i).Take(n);
@@ -95,17 +103,64 @@ namespace Test
             });
             System.Diagnostics.Debug.Assert(cache.Count == 1);
 
-            var cq = QueryCompiler.Compile((Northwind nw, int i, int rows) => nw.OrderDetails.Where(d => d.OrderID > i).Take(rows));
+            var cq = QueryCompiler.Compile((Northwind nw, int i) => nw.OrderDetails.Where(d => d.OrderID > i).Take(n));
             var compiled = RunTimedTest(iterations, i =>
             {
-                var results = cq(db, i, n).ToList();
+                var results = cq(db, i).ToList();
                 System.Diagnostics.Debug.Assert(results.Count == n);
             });
 
             Console.WriteLine("compiled   : {0} sec", compiled);
             Console.WriteLine("check cache: {0}", check);
             Console.WriteLine("cached     : {0}  {1:#.##}x vs compiled", cached, cached / compiled);
+            Console.WriteLine("auto cached: {0}  {1:#.##}x vs compiled", autoCached, autoCached / compiled);
             Console.WriteLine("not cached : {0}  {1:#.##}x vs compiled", notCached, notCached / compiled);
+        }
+
+
+        public void TestStandardQuery()
+        {
+            int iterations = 100;
+
+            var query = db.OrderDetails.Where(d => d.OrderID > 10).Take(n);
+            var qtran = new IQToolkit.Data.Common.QueryTranslator(this.provider.Language, this.provider.Mapping, this.provider.Policy);
+            var expr = ((IQueryable)query).Expression;
+            var tran = qtran.Translate(expr);
+            var plan = this.provider.GetExecutionPlan(query.Expression);
+            var exec = Expression.Lambda<Func<IEnumerable<OrderDetail>>>(plan).Compile();
+
+            var overall = RunTimedTest(iterations, i =>
+            {
+                var results = query.ToList();
+            });
+
+            var tranTime = RunTimedTest(iterations, i =>
+            {
+                var qt = new IQToolkit.Data.Common.QueryTranslator(this.provider.Language, this.provider.Mapping, this.provider.Policy);
+                var tr = qt.Translate(expr);
+            });
+
+            var buildTime = RunTimedTest(iterations, i =>
+            {
+                var qt = new IQToolkit.Data.Common.QueryTranslator(this.provider.Language, this.provider.Mapping, this.provider.Policy);
+                var result = qt.Police.BuildExecutionPlan(query.Expression, Expression.Constant(this.provider, typeof(IQueryProvider)));
+            });
+
+            var compileTime = RunTimedTest(iterations, i =>
+            {
+                var result = Expression.Lambda<Func<IEnumerable<OrderDetail>>>(plan).Compile();
+            });
+
+            var execTime = RunTimedTest(iterations, i =>
+            {
+                var result = exec().ToList();
+            });
+
+            Console.WriteLine("Overall      : {0} sec", overall);
+            Console.WriteLine("translation  : {0} ", tranTime);
+            Console.WriteLine("build        : {0} ", buildTime);
+            Console.WriteLine("compilation  : {0} ", compileTime);
+            Console.WriteLine("execution    : {0} ", execTime);
         }
     }
 }

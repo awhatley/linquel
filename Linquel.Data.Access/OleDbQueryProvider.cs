@@ -14,27 +14,107 @@ namespace IQToolkit.Data.OleDb
 
     public class OleDbQueryProvider : DbEntityProvider
     {
-        public OleDbQueryProvider(OleDbConnection connection, QueryMapping mapping, QueryPolicy policy)
-            : base(connection, mapping, policy)
+        public OleDbQueryProvider(OleDbConnection connection, QueryLanguage language, QueryMapping mapping, QueryPolicy policy)
+            : base(connection, language, mapping, policy)
         {
         }
 
-        protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        protected override QueryExecutor CreateExecutor()
         {
-            QueryType qt = parameter.QueryType;
-            if (qt == null)
-                qt = this.Language.TypeSystem.GetColumnType(parameter.Type);
-            var p = ((OleDbCommand)command).Parameters.Add(parameter.Name, GetOleDbType(qt), qt.Length);
-            if (qt.Precision != 0)
-                p.Precision = (byte)qt.Precision;
-            if (qt.Scale != 0)
-                p.Scale = (byte)qt.Scale;
-            p.Value = value ?? DBNull.Value;
+            return new Executor(this);
         }
 
-        protected virtual OleDbType GetOleDbType(QueryType type)
+        public new class Executor : DbEntityProvider.Executor
         {
-            return ToOleDbType(type.DbType);
+            OleDbQueryProvider provider;
+
+            public Executor(OleDbQueryProvider provider)
+                : base(provider)
+            {
+                this.provider = provider;
+            }
+
+            protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+            {
+                QueryType qt = parameter.QueryType;
+                if (qt == null)
+                    qt = this.provider.Language.TypeSystem.GetColumnType(parameter.Type);
+                var p = ((OleDbCommand)command).Parameters.Add(parameter.Name, this.GetOleDbType(qt), qt.Length);
+                if (qt.Precision != 0)
+                    p.Precision = (byte)qt.Precision;
+                if (qt.Scale != 0)
+                    p.Scale = (byte)qt.Scale;
+                p.Value = value ?? DBNull.Value;
+            }
+
+            protected virtual OleDbType GetOleDbType(QueryType type)
+            {
+                return ToOleDbType(((DbQueryType)type).SqlDbType);
+            }
+        }
+
+        public static OleDbType ToOleDbType(SqlDbType dbType)
+        {
+            switch (dbType)
+            {
+                case SqlDbType.BigInt:
+                    return OleDbType.BigInt;
+                case SqlDbType.Binary:
+                    return OleDbType.Binary;
+                case SqlDbType.Bit:
+                    return OleDbType.Boolean;
+                case SqlDbType.Char:
+                    return OleDbType.Char;
+                case SqlDbType.Date:
+                    return OleDbType.Date;
+                case SqlDbType.DateTime:
+                case SqlDbType.SmallDateTime:
+                case SqlDbType.DateTime2:
+                case SqlDbType.DateTimeOffset:
+                    return OleDbType.DBTimeStamp;
+                case SqlDbType.Decimal:
+                    return OleDbType.Decimal;
+                case SqlDbType.Float:
+                case SqlDbType.Real:
+                    return OleDbType.Double;
+                case SqlDbType.Image:
+                    return OleDbType.LongVarBinary;
+                case SqlDbType.Int:
+                    return OleDbType.Integer;
+                case SqlDbType.Money:
+                case SqlDbType.SmallMoney:
+                    return OleDbType.Currency;
+                case SqlDbType.NChar:
+                    return OleDbType.WChar;
+                case SqlDbType.NText:
+                    return OleDbType.LongVarChar;
+                case SqlDbType.NVarChar:
+                    return OleDbType.VarWChar;
+                case SqlDbType.SmallInt:
+                    return OleDbType.SmallInt;
+                case SqlDbType.Text:
+                    return OleDbType.LongVarChar;
+                case SqlDbType.Time:
+                    return OleDbType.DBTime;
+                case SqlDbType.Timestamp:
+                    return OleDbType.Binary;
+                case SqlDbType.TinyInt:
+                    return OleDbType.TinyInt;
+                case SqlDbType.Udt:
+                    return OleDbType.Variant;
+                case SqlDbType.UniqueIdentifier:
+                    return OleDbType.Guid;
+                case SqlDbType.VarBinary:
+                    return OleDbType.VarBinary;
+                case SqlDbType.VarChar:
+                    return OleDbType.VarChar;
+                case SqlDbType.Variant:
+                    return OleDbType.Variant;
+                case SqlDbType.Xml:
+                    return OleDbType.VarWChar;
+                default:
+                    throw new InvalidOperationException(string.Format("Unhandled sql type: {0}", dbType));
+            }
         }
 
         public static OleDbType ToOleDbType(DbType type)

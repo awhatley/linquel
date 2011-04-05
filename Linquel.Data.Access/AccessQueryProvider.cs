@@ -23,13 +23,8 @@ namespace IQToolkit.Data.Access
     {
         Dictionary<QueryCommand, OleDbCommand> commandCache = new Dictionary<QueryCommand, OleDbCommand>();
 
-        public AccessQueryProvider(OleDbConnection connection, QueryMapping mapping)
-            : base(connection, mapping, QueryPolicy.Default)
-        {
-        }
-
         public AccessQueryProvider(OleDbConnection connection, QueryMapping mapping, QueryPolicy policy)
-            : base(connection, mapping, policy)
+            : base(connection, AccessLanguage.Default, mapping, policy)
         {
         }
 
@@ -63,92 +58,61 @@ namespace IQToolkit.Data.Access
         public static readonly string AccessOleDbProvider2000 = "Microsoft.Jet.OLEDB.4.0";
         public static readonly string AccessOleDbProvider2007 = "Microsoft.ACE.OLEDB.12.0";
 
-        protected override DbCommand GetCommand(QueryCommand query, object[] paramValues)
+        protected override QueryExecutor CreateExecutor()
         {
-            OleDbCommand cmd;
-            if (!this.commandCache.TryGetValue(query, out cmd))
+            return new Executor(this);
+        }
+
+        public new class Executor : OleDbQueryProvider.Executor
+        {
+            AccessQueryProvider provider;
+
+            public Executor(AccessQueryProvider provider)
+                : base(provider)
             {
-                cmd = (OleDbCommand)this.Connection.CreateCommand();
+                this.provider = provider;
+            }
+
+            protected override DbCommand GetCommand(QueryCommand query, object[] paramValues)
+            {
+#if false
+                OleDbCommand cmd;
+                if (!this.provider.commandCache.TryGetValue(query, out cmd))
+                {
+                    cmd = (OleDbCommand)this.provider.Connection.CreateCommand();
+                    cmd.CommandText = query.CommandText;
+                    this.SetParameterValues(query, cmd, paramValues);
+                    if (this.provider.Transaction != null)
+                        cmd.Transaction = (OleDbTransaction)this.provider.Transaction;
+                    cmd.Prepare();
+                    this.provider.commandCache.Add(query, cmd);
+                }
+                else
+                {
+                    cmd = (OleDbCommand)cmd.Clone();
+                    if (this.provider.Transaction != null)
+                        cmd.Transaction = (OleDbTransaction)this.provider.Transaction;
+                    this.SetParameterValues(query, cmd, paramValues);
+                }
+#else
+                var cmd = (OleDbCommand)this.provider.Connection.CreateCommand();
                 cmd.CommandText = query.CommandText;
                 this.SetParameterValues(query, cmd, paramValues);
-                if (this.Transaction != null)
-                    cmd.Transaction = (OleDbTransaction)this.Transaction;
-                cmd.Prepare();                
-                this.commandCache.Add(query, cmd);
-            }
-            else
-            {
-                cmd = (OleDbCommand)cmd.Clone();
-                if (this.Transaction != null)
-                    cmd.Transaction = (OleDbTransaction)this.Transaction;
-                this.SetParameterValues(query, cmd, paramValues);
-            }
-            return cmd;
-        }
+                if (this.provider.Transaction != null)
+                    cmd.Transaction = (OleDbTransaction)this.provider.Transaction;
 
-        protected override OleDbType GetOleDbType(QueryType type)
-        {
-            TSqlType sqlType = type as TSqlType;
-            if (sqlType != null)
-            {
-                return ToOleDbType(sqlType.SqlDbType);
+#endif
+                return cmd;
             }
-            return base.GetOleDbType(type);
-        }
 
-        public static OleDbType ToOleDbType(SqlDbType type)
-        {
-            switch (type)
+            protected override OleDbType GetOleDbType(QueryType type)
             {
-                case SqlDbType.BigInt:
-                    return OleDbType.BigInt;
-                case SqlDbType.Bit:
-                    return OleDbType.Boolean;
-                case SqlDbType.DateTime:
-                case SqlDbType.SmallDateTime:
-                    return OleDbType.DBTimeStamp;
-                case SqlDbType.Int:
-                    return OleDbType.Integer;
-                case SqlDbType.Money:
-                case SqlDbType.SmallMoney:
-                    return OleDbType.Currency;
-                case SqlDbType.SmallInt:
-                    return OleDbType.SmallInt;
-                case SqlDbType.Timestamp:
-                    return OleDbType.Binary;
-                case SqlDbType.TinyInt:
-                    return OleDbType.TinyInt;
-                case SqlDbType.UniqueIdentifier:
-                    return OleDbType.Guid;
-                case SqlDbType.Variant:
-                    return OleDbType.Variant;
-                case SqlDbType.Xml:
-                    return OleDbType.VarChar;
-                case SqlDbType.Binary:
-                    return OleDbType.Binary;
-                case SqlDbType.Char:
-                    return OleDbType.Char;
-                case SqlDbType.NChar:
-                    return OleDbType.WChar;
-                case SqlDbType.Image:
-                    return OleDbType.LongVarBinary;
-                case SqlDbType.NText:
-                    return OleDbType.LongVarWChar;
-                case SqlDbType.NVarChar:
-                    return OleDbType.VarWChar;
-                case SqlDbType.Text:
-                    return OleDbType.LongVarChar;
-                case SqlDbType.VarBinary:
-                    return OleDbType.VarBinary;
-                case SqlDbType.VarChar:
-                    return OleDbType.VarChar;
-                case SqlDbType.Decimal:
-                    return OleDbType.Decimal;
-                case SqlDbType.Float:
-                case SqlDbType.Real:
-                    return OleDbType.Double;
-                default:
-                    throw new InvalidOperationException(string.Format("Unhandled sql type '{0}'.", type));
+                DbQueryType sqlType = type as DbQueryType;
+                if (sqlType != null)
+                {
+                    return ToOleDbType(sqlType.SqlDbType);
+                }
+                return base.GetOleDbType(type);
             }
         }
     }

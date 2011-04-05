@@ -20,13 +20,8 @@ namespace IQToolkit.Data.SqlServerCe
 
     public class SqlCeQueryProvider : DbEntityProvider
     {
-        public SqlCeQueryProvider(SqlCeConnection connection, QueryMapping mapping)
-            : base(connection, mapping, QueryPolicy.Default)
-        {
-        }
-
         public SqlCeQueryProvider(SqlCeConnection connection, QueryMapping mapping, QueryPolicy policy)
-            : base(connection, mapping, policy)
+            : base(connection, SqlCeLanguage.Default, mapping, policy)
         {
         }
 
@@ -40,17 +35,30 @@ namespace IQToolkit.Data.SqlServerCe
             return string.Format(@"Data Source='{0}'", databaseFile);
         }
 
-        protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+        protected override QueryExecutor CreateExecutor()
         {
-            TSqlType sqlType = (TSqlType)parameter.QueryType;
-            if (sqlType == null)
-                sqlType = (TSqlType)this.Language.TypeSystem.GetColumnType(parameter.Type);
-            var p = ((SqlCeCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, sqlType.Length);
-            if (sqlType.Precision != 0)
-                p.Precision = (byte)sqlType.Precision;
-            if (sqlType.Scale != 0)
-                p.Scale = (byte)sqlType.Scale;
-            p.Value = value ?? DBNull.Value;
+            return new Executor(this);
+        }
+
+        new class Executor : DbEntityProvider.Executor
+        {
+            public Executor(SqlCeQueryProvider provider)
+                : base(provider)
+            {
+            }
+
+            protected override void AddParameter(DbCommand command, QueryParameter parameter, object value)
+            {
+                DbQueryType sqlType = (DbQueryType)parameter.QueryType;
+                if (sqlType == null)
+                    sqlType = (DbQueryType)this.Provider.Language.TypeSystem.GetColumnType(parameter.Type);
+                var p = ((SqlCeCommand)command).Parameters.Add("@" + parameter.Name, sqlType.SqlDbType, sqlType.Length);
+                if (sqlType.Precision != 0)
+                    p.Precision = (byte)sqlType.Precision;
+                if (sqlType.Scale != 0)
+                    p.Scale = (byte)sqlType.Scale;
+                p.Value = value ?? DBNull.Value;
+            }
         }
     }
 }

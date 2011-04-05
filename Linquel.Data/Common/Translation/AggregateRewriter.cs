@@ -14,18 +14,20 @@ namespace IQToolkit.Data.Common
     /// </summary>
     public class AggregateRewriter : DbExpressionVisitor
     {
+        QueryLanguage language;
         ILookup<TableAlias, AggregateSubqueryExpression> lookup;
         Dictionary<AggregateSubqueryExpression, Expression> map;
 
-        private AggregateRewriter(Expression expr)
+        private AggregateRewriter(QueryLanguage language, Expression expr)
         {
+            this.language = language;
             this.map = new Dictionary<AggregateSubqueryExpression, Expression>();
             this.lookup = AggregateGatherer.Gather(expr).ToLookup(a => a.GroupByAlias);
         }
 
-        public static Expression Rewrite(Expression expr)
+        public static Expression Rewrite(QueryLanguage language, Expression expr)
         {
-            return new AggregateRewriter(expr).Visit(expr);
+            return new AggregateRewriter(language, expr).Visit(expr);
         }
 
         protected override Expression VisitSelect(SelectExpression select)
@@ -37,8 +39,9 @@ namespace IQToolkit.Data.Common
                 foreach (AggregateSubqueryExpression ae in lookup[select.Alias])
                 {
                     string name = "agg" + aggColumns.Count;
-                    ColumnDeclaration cd = new ColumnDeclaration(name, ae.AggregateInGroupSelect);
-                    this.map.Add(ae, new ColumnExpression(ae.Type, null, ae.GroupByAlias, name));
+                    var colType = this.language.TypeSystem.GetColumnType(ae.Type);
+                    ColumnDeclaration cd = new ColumnDeclaration(name, ae.AggregateInGroupSelect, colType);
+                    this.map.Add(ae, new ColumnExpression(ae.Type, colType, ae.GroupByAlias, name));
                     aggColumns.Add(cd);
                 }
                 return new SelectExpression(select.Alias, aggColumns, select.From, select.Where, select.OrderBy, select.GroupBy, select.IsDistinct, select.Skip, select.Take, select.IsReverse);

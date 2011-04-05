@@ -51,22 +51,35 @@ namespace IQToolkit.Data.SQLite
             return fex != null && fex.Name == "changes()";
         }
 
-        public override Expression Translate(Expression expression)
+        public override QueryLinguist CreateLinguist(QueryTranslator translator)
         {
-            // fix up any order-by's
-            expression = OrderByRewriter.Rewrite(expression);
-
-            expression = base.Translate(expression);
-
-            //expression = SkipToNestedOrderByRewriter.Rewrite(expression);
-            expression = UnusedColumnRemover.Remove(expression);
-
-            return expression;
+            return new SQLiteLinguist(this, translator);
         }
 
-        public override string Format(Expression expression)
+        class SQLiteLinguist : QueryLinguist
         {
-            return SQLiteFormatter.Format(expression);
+            public SQLiteLinguist(SQLiteLanguage language, QueryTranslator translator)
+                : base(language, translator)
+            {
+            }
+
+            public override Expression Translate(Expression expression)
+            {
+                // fix up any order-by's
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+
+                expression = base.Translate(expression);
+
+                //expression = SkipToNestedOrderByRewriter.Rewrite(expression);
+                expression = UnusedColumnRemover.Remove(expression);
+
+                return expression;
+            }
+
+            public override string Format(Expression expression)
+            {
+                return SQLiteFormatter.Format(expression);
+            }
         }
 
         public static readonly QueryLanguage Default = new SQLiteLanguage();

@@ -72,8 +72,7 @@ namespace IQToolkit.Data.Mapping
         Dictionary<string, MappingEntity> entities = new Dictionary<string, MappingEntity>();
         ReaderWriterLock rwLock = new ReaderWriterLock();
 
-        public AttributeMapping(QueryLanguage language, Type contextType)
-            : base(language)
+        public AttributeMapping(Type contextType)
         {
             this.contextType = contextType;
         }
@@ -207,7 +206,7 @@ namespace IQToolkit.Data.Mapping
             return member;
         }
 
-        protected override string GetTableName(MappingEntity entity)
+        public override string GetTableName(MappingEntity entity)
         {
             AttributeMappingEntity en = (AttributeMappingEntity)entity;
             var table = en.Tables.FirstOrDefault();
@@ -227,25 +226,25 @@ namespace IQToolkit.Data.Mapping
             return ((AttributeMappingEntity)entity).MappedMembers;
         }
 
-        protected override bool IsMapped(MappingEntity entity, MemberInfo member)
+        public override bool IsMapped(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null;
         }
 
-        protected override bool IsColumn(MappingEntity entity, MemberInfo member)
+        public override bool IsColumn(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.Column != null;
         }
 
-        protected override bool IsComputed(MappingEntity entity, MemberInfo member)
+        public override bool IsComputed(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.Column != null && mm.Column.IsComputed;
         }
 
-        protected override bool IsGenerated(MappingEntity entity, MemberInfo member)
+        public override bool IsGenerated(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.Column != null && mm.Column.IsGenerated;
@@ -257,7 +256,7 @@ namespace IQToolkit.Data.Mapping
             return mm != null && mm.Column != null && mm.Column.IsPrimaryKey;
         }
 
-        protected override string GetColumnName(MappingEntity entity, MemberInfo member)
+        public override string GetColumnName(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             if (mm != null && mm.Column != null && !string.IsNullOrEmpty(mm.Column.Name))
@@ -265,21 +264,21 @@ namespace IQToolkit.Data.Mapping
             return base.GetColumnName(entity, member);
         }
 
-        protected override QueryType GetColumnType(MappingEntity entity, MemberInfo member)
+        public override string GetColumnDbType(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             if (mm != null && mm.Column != null && !string.IsNullOrEmpty(mm.Column.DbType))
-                return this.Language.TypeSystem.Parse(mm.Column.DbType);
-            return base.GetColumnType(entity, member);
+                return mm.Column.DbType;
+            return null;
         }
 
-        protected override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
+        public override bool IsAssociationRelationship(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.Association != null;        
         }
 
-        protected override bool IsRelationshipSource(MappingEntity entity, MemberInfo member)
+        public override bool IsRelationshipSource(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             if (mm != null && mm.Association != null)
@@ -290,7 +289,7 @@ namespace IQToolkit.Data.Mapping
             return false;
         }
 
-        protected override bool IsRelationshipTarget(MappingEntity entity, MemberInfo member)
+        public override bool IsRelationshipTarget(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             if (mm != null && mm.Association != null)
@@ -301,13 +300,13 @@ namespace IQToolkit.Data.Mapping
             return false;
         }
 
-        protected override bool IsNestedEntity(MappingEntity entity, MemberInfo member)
+        public override bool IsNestedEntity(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return mm != null && mm.NestedEntity != null;
         }
 
-        protected override MappingEntity GetRelatedEntity(MappingEntity entity, MemberInfo member)
+        public override MappingEntity GetRelatedEntity(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingEntity thisEntity = (AttributeMappingEntity)entity;
             AttributeMappingMember mm = thisEntity.GetMappingMember(member.Name);
@@ -317,7 +316,7 @@ namespace IQToolkit.Data.Mapping
                 {
                     Type elementType = TypeHelper.GetElementType(TypeHelper.GetMemberType(member));
                     Type entityType = (mm.Association.RelatedEntityType != null) ? mm.Association.RelatedEntityType : elementType;
-                    return this.GetEntity(elementType, mm.Association.RelatedEntityID, entityType);
+                    return this.GetReferencedEntity(elementType, mm.Association.RelatedEntityID, entityType, "Association.RelatedEntityID");
                 }
                 else if (mm.NestedEntity != null)
                 {
@@ -329,70 +328,95 @@ namespace IQToolkit.Data.Mapping
 
         private static readonly char[] separators = new char[] {' ', ',', '|' };
 
-        protected override IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
+        public override IEnumerable<MemberInfo> GetAssociationKeyMembers(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingEntity thisEntity = (AttributeMappingEntity)entity;
             AttributeMappingMember mm = thisEntity.GetMappingMember(member.Name);
             if (mm != null && mm.Association != null)
             {
-                return mm.Association.KeyMembers.Split(separators).Select(k => thisEntity.GetMappingMember(k).Member);
+                return this.GetReferencedMembers(thisEntity, mm.Association.KeyMembers, "Association.KeyMembers", thisEntity.EntityType);
             }
             return base.GetAssociationKeyMembers(entity, member);
         }
 
-        protected override IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
+        public override IEnumerable<MemberInfo> GetAssociationRelatedKeyMembers(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingEntity thisEntity = (AttributeMappingEntity)entity;
             AttributeMappingEntity relatedEntity = (AttributeMappingEntity)this.GetRelatedEntity(entity, member);
             AttributeMappingMember mm = thisEntity.GetMappingMember(member.Name);
             if (mm != null && mm.Association != null)
             {
-                return mm.Association.RelatedKeyMembers.Split(separators).Select(k => relatedEntity.GetMappingMember(k).Member);
+                return this.GetReferencedMembers(relatedEntity, mm.Association.RelatedKeyMembers, "Association.RelatedKeyMembers", thisEntity.EntityType);
             }
             return base.GetAssociationRelatedKeyMembers(entity, member);
         }
 
-        protected override IList<MappingTable> GetTables(MappingEntity entity)
+        private IEnumerable<MemberInfo> GetReferencedMembers(AttributeMappingEntity entity, string names, string source, Type sourceType)
+        {
+            return names.Split(separators).Select(n => this.GetReferencedMember(entity, n, source, sourceType));
+        }
+
+        private MemberInfo GetReferencedMember(AttributeMappingEntity entity, string name, string source, Type sourceType)
+        {
+            var mm = entity.GetMappingMember(name);
+            if (mm == null)
+            {
+                throw new InvalidOperationException(string.Format("AttributeMapping: The member '{0}.{1}' referenced in {2} for '{3}' is not mapped or does not exist", entity.EntityType.Name, name, source, sourceType.Name));
+            }
+            return mm.Member;
+        }
+
+        private MappingEntity GetReferencedEntity(Type elementType, string name, Type entityType, string source)
+        {
+            var entity = this.GetEntity(elementType, name, entityType);
+            if (entity == null)
+            {
+                throw new InvalidOperationException(string.Format("The entity '{0}' referenced in {1} of '{2}' does not exist", name, source, entityType.Name));
+            }
+            return entity;
+        }
+
+        public override IList<MappingTable> GetTables(MappingEntity entity)
         {
             return ((AttributeMappingEntity)entity).Tables;
         }
 
-        protected override string GetAlias(MappingTable table)
+        public override string GetAlias(MappingTable table)
         {
             return ((AttributeMappingTable)table).Attribute.Alias;
         }
 
-        protected override string GetAlias(MappingEntity entity, MemberInfo member)
+        public override string GetAlias(MappingEntity entity, MemberInfo member)
         {
             AttributeMappingMember mm = ((AttributeMappingEntity)entity).GetMappingMember(member.Name);
             return (mm != null && mm.Column != null) ? mm.Column.Alias : null;
         }
 
-        protected override string GetTableName(MappingTable table)
+        public override string GetTableName(MappingTable table)
         {
             var amt = (AttributeMappingTable)table;
             return this.GetTableName(amt.Entity, amt.Attribute);
         }
 
-        protected override bool IsExtensionTable(MappingTable table)
+        public override bool IsExtensionTable(MappingTable table)
         {
             return ((AttributeMappingTable)table).Attribute is ExtensionTableAttribute;
         }
 
-        protected override string GetExtensionRelatedAlias(MappingTable table)
+        public override string GetExtensionRelatedAlias(MappingTable table)
         {
             var attr = ((AttributeMappingTable)table).Attribute as ExtensionTableAttribute;
             return (attr != null) ? attr.RelatedAlias : null;
         }
 
-        protected override IEnumerable<string> GetExtensionKeyColumnNames(MappingTable table)
+        public override IEnumerable<string> GetExtensionKeyColumnNames(MappingTable table)
         {
             var attr = ((AttributeMappingTable)table).Attribute as ExtensionTableAttribute;
             if (attr == null) return new string[] { };
             return attr.KeyColumns.Split(separators);
         }
 
-        protected override IEnumerable<MemberInfo> GetExtensionRelatedMembers(MappingTable table)
+        public override IEnumerable<MemberInfo> GetExtensionRelatedMembers(MappingTable table)
         {
             var amt = (AttributeMappingTable)table;
             var attr = amt.Attribute as ExtensionTableAttribute;
@@ -416,6 +440,22 @@ namespace IQToolkit.Data.Mapping
                 }
             }
             return null;
+        }
+
+        public override QueryMapper CreateMapper(QueryTranslator translator)
+        {
+            return new AttributeMapper(this, translator);
+        }
+
+        class AttributeMapper : AdvancedMapper
+        {
+            AttributeMapping mapping;
+
+            public AttributeMapper(AttributeMapping mapping, QueryTranslator translator)
+                : base(mapping, translator)
+            {
+                this.mapping = mapping;
+            }
         }
 
         class AttributeMappingMember

@@ -21,7 +21,7 @@ namespace IQToolkit.Data.SqlClient
     /// </summary>
     public class TSqlLanguage : QueryLanguage
     {
-        TSqlTypeSystem typeSystem = new TSqlTypeSystem();
+        DbTypeSystem typeSystem = new DbTypeSystem();
 
         public TSqlLanguage()
         {
@@ -70,25 +70,38 @@ namespace IQToolkit.Data.SqlClient
             return new FunctionExpression(TypeHelper.GetMemberType(member), "SCOPE_IDENTITY()", null);
         }
 
-        public override Expression Translate(Expression expression)
+        public override QueryLinguist CreateLinguist(QueryTranslator translator)
         {
-            // fix up any order-by's
-            expression = OrderByRewriter.Rewrite(expression);
-
-            expression = base.Translate(expression);
-
-            // convert skip/take info into RowNumber pattern
-            expression = SkipToRowNumberRewriter.Rewrite(expression);
-
-            // fix up any order-by's we may have changed
-            expression = OrderByRewriter.Rewrite(expression);
-
-            return expression;
+            return new TSqlLinguist(this, translator);
         }
 
-        public override string Format(Expression expression)
+        class TSqlLinguist : QueryLinguist
         {
-            return TSqlFormatter.Format(expression, this);
+            public TSqlLinguist(TSqlLanguage language, QueryTranslator translator)
+                : base(language, translator)
+            {
+            }
+
+            public override Expression Translate(Expression expression)
+            {
+                // fix up any order-by's
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+
+                expression = base.Translate(expression);
+
+                // convert skip/take info into RowNumber pattern
+                expression = SkipToRowNumberRewriter.Rewrite(this.Language, expression);
+
+                // fix up any order-by's we may have changed
+                expression = OrderByRewriter.Rewrite(this.Language, expression);
+
+                return expression;
+            }
+
+            public override string Format(Expression expression)
+            {
+                return TSqlFormatter.Format(expression, this.Language);
+            }
         }
 
         private static TSqlLanguage _default;

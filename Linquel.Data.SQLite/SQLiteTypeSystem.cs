@@ -8,7 +8,7 @@ namespace IQToolkit.Data.SQLite
 {
     using IQToolkit.Data.Common;
 
-    public class SQLiteTypeSystem : TSqlTypeSystem
+    public class SQLiteTypeSystem : DbTypeSystem
     {
         public override SqlDbType GetSqlType(string typeName)
         {
@@ -46,7 +46,7 @@ namespace IQToolkit.Data.SQLite
         public override string GetVariableDeclaration(QueryType type, bool suppressSize)
         {
             StringBuilder sb = new StringBuilder();
-            TSqlType sqlType = (TSqlType)type;
+            DbQueryType sqlType = (DbQueryType)type;
             SqlDbType sqlDbType = sqlType.SqlDbType;
 
             switch (sqlDbType)

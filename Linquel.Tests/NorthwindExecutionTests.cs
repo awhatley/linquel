@@ -10,12 +10,12 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Text;
 using System.Xml;
-using System.Xml.Linq;
 
 namespace Test 
 {
     using IQToolkit;
     using IQToolkit.Data;
+    using IQToolkit.Data.Mapping;
 
     public class NorthwindExecutionTests : NorthwindTestHarness
     {
@@ -345,6 +345,12 @@ namespace Test
             AssertTrue(Enumerable.SequenceEqual(list, sorted));
         }
 
+        public void TestCountProperty()
+        {
+            var list = db.Customers.Where(c => c.Orders.Count > 0).ToList();
+            AssertValue(89, list.Count);
+        }
+
         public void TestGroupBy()
         {
             var list = db.Customers.GroupBy(c => c.City).ToList();
@@ -450,6 +456,12 @@ namespace Test
         {
             var list = db.Orders.Where(o => o.CustomerID == "ALFKI").GroupBy(o => new { o.CustomerID, o.OrderDate }).Select(g => g.Sum(o => (o.CustomerID == "ALFKI" ? 1 : 1))).ToList();
             AssertValue(6, list.Count);
+        }
+
+        public void TestGroupByWithCountInWhere()
+        {
+            var list = db.Customers.Where(a => a.Orders.Count() > 15).GroupBy(a => a.City).ToList();
+            AssertValue(9, list.Count);
         }
 
         public void TestOrderByGroupBy()
@@ -1742,7 +1754,9 @@ namespace Test
 
         public void TestCustomersIncludeOrders()
         {
-            Northwind nw = new Northwind(this.provider.New(new TestPolicy("Orders")));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            Northwind nw = new Northwind(this.provider.New(policy));
 
             var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
             AssertValue(1, custs.Count);
@@ -1752,7 +1766,10 @@ namespace Test
 
         public void TestCustomersIncludeOrdersAndDetails()
         {
-            Northwind nw = new Northwind(this.provider.New(new TestPolicy("Orders", "Details")));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            policy.IncludeWith<Order>(o => o.Details);
+            Northwind nw = new Northwind(this.provider.New(policy));
 
             var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
             AssertValue(1, custs.Count);
@@ -1761,6 +1778,170 @@ namespace Test
             AssertTrue(custs[0].Orders.Any(o => o.OrderID == 10643));
             AssertNotValue(null, custs[0].Orders.Single(o => o.OrderID == 10643).Details);
             AssertValue(3, custs[0].Orders.Single(o => o.OrderID == 10643).Details.Count);
+        }
+
+        public void TestCustomersIncludeOrdersViaConstructorOnly()
+        {
+            var mapping = new AttributeMapping(typeof(NorthwindX));
+            var policy = new EntityPolicy();
+            policy.IncludeWith<CustomerX>(c => c.Orders);
+            NorthwindX nw = new NorthwindX(this.provider.New(policy).New(mapping));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
+            AssertValue(1, custs.Count);
+            AssertNotValue(null, custs[0].Orders);
+            AssertValue(6, custs[0].Orders.Count);
+        }
+
+        public void TestCustomersIncludeOrdersWhere()
+        {
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders.Where(o => (o.OrderID & 1) == 0));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
+            AssertValue(1, custs.Count);
+            AssertNotValue(null, custs[0].Orders);
+            AssertValue(3, custs[0].Orders.Count);
+        }
+
+        public void TestCustomersIncludeOrdersDeferred()
+        {
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders, true);
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
+            AssertValue(1, custs.Count);
+            AssertNotValue(null, custs[0].Orders);
+            AssertValue(6, custs[0].Orders.Count);
+        }
+
+        public void TestCustomersAssociateOrders()
+        {
+            var policy = new EntityPolicy();
+            policy.AssociateWith<Customer>(c => c.Orders.Where(o => (o.OrderID & 1) == 0));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI")
+                .Select(c => new { CustomerID = c.CustomerID, FilteredOrdersCount = c.Orders.Count() }).ToList();
+            AssertValue(1, custs.Count);
+            AssertValue(3, custs[0].FilteredOrdersCount);
+        }
+
+        public void TestCustomersIncludeThenAssociateOrders()
+        {
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Customer>(c => c.Orders);
+            policy.AssociateWith<Customer>(c => c.Orders.Where(o => (o.OrderID & 1) == 0));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
+            AssertValue(1, custs.Count);
+            AssertNotValue(null, custs[0].Orders);
+            AssertValue(3, custs[0].Orders.Count);
+        }
+
+        public void TestCustomersAssociateThenIncludeOrders()
+        {
+            var policy = new EntityPolicy();
+            policy.AssociateWith<Customer>(c => c.Orders.Where(o => (o.OrderID & 1) == 0));
+            policy.IncludeWith<Customer>(c => c.Orders);
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
+            AssertValue(1, custs.Count);
+            AssertNotValue(null, custs[0].Orders);
+            AssertValue(3, custs[0].Orders.Count);
+        }
+
+        public void TestOrdersIncludeDetailsWithGroupBy()
+        {
+            var policy = new EntityPolicy();
+            policy.IncludeWith<Order>(o => o.Details);
+            Northwind nw = new Northwind(this.provider.New(policy));
+            var list = nw.Orders.Where(o => o.CustomerID == "ALFKI").GroupBy(o => o.CustomerID).ToList();
+            AssertValue(1, list.Count);
+            var grp = list[0].ToList();
+            AssertValue(6, grp.Count);
+            var o10643 = grp.SingleOrDefault(o => o.OrderID == 10643);
+            AssertNotValue(null, o10643);
+            AssertValue(3, o10643.Details.Count);
+        }
+
+        public void TestCustomersApplyFilter()
+        {
+            var policy = new EntityPolicy();
+            policy.Apply<Customer>(seq => seq.Where(c => c.City == "London"));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.ToList();
+            AssertValue(6, custs.Count);
+        }
+
+        public void TestCustomersApplyComputedFilter()
+        {
+            string ci = "Lon";
+            string ty = "don";
+            var policy = new EntityPolicy();
+            policy.Apply<Customer>(seq => seq.Where(c => c.City == ci + ty));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.ToList();
+            AssertValue(6, custs.Count);
+        }
+
+        public void TestCustomersApplyFilterTwice()
+        {
+            var policy = new EntityPolicy();
+            policy.Apply<Customer>(seq => seq.Where(c => c.City == "London"));
+            policy.Apply<Customer>(seq => seq.Where(c => c.Country == "UK"));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.ToList();
+            AssertValue(6, custs.Count);
+        }
+
+        public void TestCustomersApplyOrder()
+        {
+            var policy = new EntityPolicy();
+            policy.Apply<Customer>(seq => seq.OrderBy(c => c.ContactName));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var list = nw.Customers.Where(c => c.City == "London").ToList();
+
+            AssertValue(6, list.Count);
+            var sorted = list.OrderBy(c => c.ContactName).ToList();
+            AssertTrue(Enumerable.SequenceEqual(list, sorted));
+        }
+
+        public void TestCustomersApplyOrderAndAssociateOrders()
+        {
+            var policy = new EntityPolicy();
+            policy.Apply<Order>(ords => ords.Where(o => o.OrderDate != null));
+            policy.IncludeWith<Customer>(c => c.Orders.Where(o => (o.OrderID & 1) == 0));
+            Northwind nw = new Northwind(this.provider.New(policy));
+
+            var custs = nw.Customers.Where(c => c.CustomerID == "ALFKI").ToList();
+            AssertValue(1, custs.Count);
+            AssertNotValue(null, custs[0].Orders);
+            AssertValue(3, custs[0].Orders.Count);
+        }
+
+        public void TestOrdersIncludeDetailsWithFirst()
+        {
+            EntityPolicy policy = new EntityPolicy();
+            policy.IncludeWith<Order>(o => o.Details);
+
+            var ndb = new Northwind(provider.New(policy));
+            var q = from o in ndb.Orders
+                    where o.OrderID == 10248
+                    select o;
+
+            Order so = q.Single();
+            AssertValue(3, so.Details.Count);
+            Order fo = q.First();
+            AssertValue(3, fo.Details.Count);
         }
     }
 }

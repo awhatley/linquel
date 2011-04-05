@@ -36,6 +36,7 @@ namespace IQToolkit.Data.MySqlClient
 
         protected override Expression VisitSelect(SelectExpression select)
         {
+            this.AddAliases(select.From);
             this.Write("SELECT ");
             if (select.IsDistinct)
             {
